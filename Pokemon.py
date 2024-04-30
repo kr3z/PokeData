@@ -377,7 +377,7 @@ class PokemonForm(Base):
     form_names: Mapped[List["PokemonFormFormName"]] = relationship(back_populates="object_ref",
                                                           primaryjoin="PokemonForm.id == foreign(PokemonFormFormName.object_key)")
 
-class PokemonHabitat(Base):
+class PokemonHabitat(Base, PokeApiResource):
     __tablename__ = "PokemonHabitat"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -387,6 +387,25 @@ class PokemonHabitat(Base):
     
     pokemon_species: Mapped[List["PokemonSpecies"]] = relationship(back_populates="habitat",
                                                           primaryjoin="PokemonHabitat.id == foreign(PokemonSpecies.habitat_key)")
+
+    _cache: Dict[int, "PokemonHabitat"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_PokemonHabitat_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "PokemonHabitat":
+        poke_api_id = data.id_
+        name = data.name
+        habitat = cls(poke_api_id=poke_api_id, name=name)
+        cls._cache[habitat.poke_api_id] = habitat
+        return habitat
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
 
 class PokemonShape(Base, PokeApiResource):
     __tablename__ = "PokemonShape"
@@ -403,6 +422,10 @@ class PokemonShape(Base, PokeApiResource):
                                                           primaryjoin="PokemonShape.id == foreign(PokemonSpecies.shape_key)")
     
     _cache: Dict[int, "PokemonShape"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_PokemonShape_PokeApiId"),
+    )
     
     @classmethod
     def parse_data(cls,data) -> "PokemonShape":
@@ -412,7 +435,7 @@ class PokemonShape(Base, PokeApiResource):
         cls._cache[shape.poke_api_id] = shape
         return shape
     
-    def __init__(self, poke_api_id: int, name: str,):
+    def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
         self.name = name

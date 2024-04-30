@@ -1,8 +1,8 @@
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, SmallInteger, String, Boolean
+from sqlalchemy import Integer, SmallInteger, String, Boolean, UniqueConstraint
 
-from Base import Base, TinyInteger
+from Base import Base, TinyInteger, PokeApiResource, get_next_id
 
 if TYPE_CHECKING:
     from Locations import Location
@@ -11,41 +11,69 @@ if TYPE_CHECKING:
     from Pokemon import Pokemon, PokemonSpecies, PokemonType
     from TextEntries import EvolutionTriggerName
 
-class EvolutionChain(Base):
+class EvolutionChain(Base, PokeApiResource):
     __tablename__ = "EvolutionChain"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    is_baby: Mapped[bool] = mapped_column(Boolean)
     baby_trigger_item_key: Mapped[Optional[int]] = mapped_column(Integer)
-    #chain_key: Mapped[int] = mapped_column(Integer)
-    evolves_from_key: Mapped[Optional[int]] = mapped_column(Integer)
-    species_key: Mapped[int] = mapped_column(Integer)
+    chain_key: Mapped[int] = mapped_column(Integer)
 
     baby_trigger_item: Mapped["Item"] = relationship(#back_populates="baby_trigger_for",
                                                      primaryjoin="EvolutionChain.baby_trigger_item_key == Item.id",
                                                      foreign_keys=baby_trigger_item_key)
-    #chain: Mapped["ChainLink"] = relationship
-    evolves_from: Mapped["EvolutionChain"] = relationship(back_populates="evolves_to", remote_side=id,
-                                                          primaryjoin="EvolutionChain.evolves_from_key == EvolutionChain.id",
-                                                          foreign_keys=evolves_from_key)
-    evolves_to: Mapped[List["EvolutionChain"]] = relationship(back_populates="evolves_from",
-                                                              primaryjoin="EvolutionChain.id == foreign(EvolutionChain.evolves_from_key)")
-    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="evolution_chain",
-                                                                      primaryjoin="EvolutionChain.id == foreign(EvolutionDetail.evolution_chain_key)")
-    species: Mapped["PokemonSpecies"] = relationship(#back_populates="evolution_chain",
-                                                     primaryjoin="EvolutionChain.species_key == PokemonSpecies.id",
-                                                     foreign_keys=species_key)
-                                                     
+    
+    chain: Mapped["ChainLink"] = relationship(back_populates="evolution_chain",
+                                              primaryjoin="EvolutionChain.chain_key == ChainLink.id",
+                                              foreign_keys=chain_key)
+    
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_EvolutionChain_PokeApiId"),
+    )
 
+    _cache: Dict[int, "EvolutionChain"] = {}
 
-""" class ChainLink(Base):
+    @classmethod
+    def parse_data(cls,data) -> "EvolutionChain":
+        poke_api_id = data.id
+        evolution_chain = cls(poke_api_id=poke_api_id)
+        cls._cache[evolution_chain.poke_api_id] = evolution_chain
+        return evolution_chain
+    
+    def __init__(self, poke_api_id: int):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+
+class ChainLink(Base):
     __tablename__ = "ChainLink"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     is_baby: Mapped[bool] = mapped_column(Boolean)
     species_key: Mapped[int] = mapped_column(Integer)
+    evolves_from_key: Mapped[Optional[int]] = mapped_column(Integer)
+    #chain: Mapped["ChainLink"] = relationship
+    evolves_from: Mapped["ChainLink"] = relationship(back_populates="evolves_to", remote_side=id,
+                                                          primaryjoin="ChainLink.evolves_from_key == ChainLink.id",
+                                                          foreign_keys=evolves_from_key)
+    evolves_to: Mapped[List["ChainLink"]] = relationship(back_populates="evolves_from",
+                                                              primaryjoin="ChainLink.id == foreign(ChainLink.evolves_from_key)")
+    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="evolution_chain",
+                                                                      primaryjoin="ChainLink.id == foreign(EvolutionDetail.evolution_chain_key)")
+    species: Mapped["PokemonSpecies"] = relationship(#back_populates="evolution_chain",
+                                                     primaryjoin="ChainLink.species_key == PokemonSpecies.id",
+                                                     foreign_keys=species_key)
 
-    species
-"""
+    __table_args__ = (
+        UniqueConstraint("species_key",name="ux_ChainLink_SpeciesKey"),
+    )
 
+    @classmethod
+    def parse_data(cls,data) -> "ChainLink":
+        poke_api_id = data.id
+        chain = cls(is_baby = data.is_baby)
+        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
+        return chain
+    
+    def __init__(self, is_baby: bool):
+        self.id = get_next_id()
+        self.is_baby = is_baby
 
 
 class EvolutionDetail(Base):
@@ -72,8 +100,8 @@ class EvolutionDetail(Base):
     trade_species_key: Mapped[Optional[int]] = mapped_column(Integer)
     turn_upside_down: Mapped[bool] = mapped_column(Boolean)
 
-    evolution_chain: Mapped["EvolutionChain"] = relationship(back_populates="evolution_details",
-                                                             primaryjoin="EvolutionDetail.evolution_chain_key == EvolutionChain.id",
+    evolution_chain: Mapped["ChainLink"] = relationship(back_populates="evolution_details",
+                                                             primaryjoin="EvolutionDetail.evolution_chain_key == ChainLink.id",
                                                              foreign_keys=evolution_chain_key)
     pokemon: Mapped["Pokemon"] = relationship(back_populates="evolution_details",
                                               primaryjoin="EvolutionDetail.pokemon_key == Pokemon.id",

@@ -10,14 +10,14 @@ from pokebase.interface import APIResource
 from Base import Session, PokeApiResource
 from Berries import Berry
 from Contests import ContestChain
-from Evolution import EvolutionChain
+from Evolution import EvolutionChain, ChainLink
 from Encounters import Encounter
 from Games import Generation
 from Items import Item
 from Locations import Region, Location
 from Moves import Move, MoveLearnMethod, Machine
-from Pokemon import PokemonSpecies, EggGroup, PokemonColor, PokemonShape
-from TextEntries import EggGroupName, Language, LanguageName, TextEntry
+from Pokemon import PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat
+from TextEntries import Language, TextEntry
 
 logger = logging.getLogger('PokeBase')
 REQ_WAIT_TIME = 1000
@@ -30,7 +30,8 @@ POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
     EggGroup: pokebase.egg_group,
     Language: pokebase.language,
     PokemonColor: pokebase.pokemon_color, 
-    PokemonShape: pokebase.pokemon_shape
+    PokemonShape: pokebase.pokemon_shape,
+    PokemonHabitat: pokebase.pokemon_habitat
 }
 
 def rate_limit(func: Callable):
@@ -233,6 +234,16 @@ class PokeBaseWrapper:
         species.shape = shape
         species.shape_key = shape.id
 
+        #habitat
+        habitat_id = species_data.habitat.id_
+        habitat = self.process_pokemon_habitat(habitat_id)
+        species.habitat = habitat
+        species.habitat_key = habitat.id
+
+        #evolution chain
+        evolution_chain_id = species_data.evolution_chain.id
+
+
         return species
 
     @api_resource(PokemonColor)
@@ -242,6 +253,32 @@ class PokeBaseWrapper:
     @api_resource(PokemonShape)
     def process_pokemon_shape(shape: PokemonShape, shape_data: APIResource, self, shape_id: int, ignore_404: bool = False) -> PokemonShape:
         return shape
+
+    @api_resource(PokemonHabitat)
+    def process_pokemon_habitat(habitat: PokemonHabitat, habitat_data: APIResource, self, habitat_id: int, ignore_404: bool = False) -> PokemonHabitat:
+        return habitat
+    
+    @api_resource(EvolutionChain)
+    def process_evolution_chain(evolution_chain: EvolutionChain, evolution_chain_data: APIResource, self, evolution_chain_id: int, ignore_404: bool = False) -> EvolutionChain:
+
+        #baby_trigger_item
+        if evolution_chain.baby_trigger_item:
+            baby_trigger_item_id = evolution_chain_data.baby_trigger_item.id_
+            baby_trigger_item = self.process_item(baby_trigger_item_id)
+            evolution_chain.baby_trigger_item = baby_trigger_item
+            evolution_chain.baby_trigger_item_key = baby_trigger_item.id
+
+        #chain
+        chain_data = evolution_chain.chain
+        chain = self.process_chain_link(chain_data = chain_data)
+        evolution_chain.chain = chain
+        evolution_chain.chain_key = chain.id
+
+        return evolution_chain
+    
+    def process_chain_link(chain_data, evolves_from: ChainLink = None) -> ChainLink:
+        chain = ChainLink.parse_data(chain_data)
+
 
     def process_pokemon_species_old(self, species_id: int) -> PokemonSpecies: 
         logger.debug("process_pokemon_species: species_id: %s", species_id)
