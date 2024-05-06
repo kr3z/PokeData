@@ -342,6 +342,10 @@ class PokemonColor(Base, PokeApiResource):
         self.poke_api_id = poke_api_id
         self.name = name
 
+    def compare(self, data):
+        if self.name != data.name:
+            self.name == data.name
+
 class PokemonForm(Base):
     __tablename__ = "PokemonForm"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
@@ -407,6 +411,10 @@ class PokemonHabitat(Base, PokeApiResource):
         self.poke_api_id = poke_api_id
         self.name = name
 
+    def compare(self, data):
+        if self.name != data.name:
+            self.name == data.name
+
 class PokemonShape(Base, PokeApiResource):
     __tablename__ = "PokemonShape"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
@@ -439,6 +447,10 @@ class PokemonShape(Base, PokeApiResource):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
         self.name = name
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name == data.name
 
 class PokemonSpecies(Base, PokeApiResource):
     __tablename__ = "PokemonSpecies"

@@ -42,6 +42,9 @@ class EvolutionChain(Base, PokeApiResource):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
 
+    def compare(self, data):
+        pass
+
 class ChainLink(Base):
     __tablename__ = "ChainLink"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
@@ -54,7 +57,7 @@ class ChainLink(Base):
                                                           foreign_keys=evolves_from_key)
     evolves_to: Mapped[List["ChainLink"]] = relationship(back_populates="evolves_from",
                                                               primaryjoin="ChainLink.id == foreign(ChainLink.evolves_from_key)")
-    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="evolution_chain",
+    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="chain_link",
                                                                       primaryjoin="ChainLink.id == foreign(EvolutionDetail.evolution_chain_key)")
     species: Mapped["PokemonSpecies"] = relationship(#back_populates="evolution_chain",
                                                      primaryjoin="ChainLink.species_key == PokemonSpecies.id",
@@ -66,7 +69,7 @@ class ChainLink(Base):
 
     @classmethod
     def parse_data(cls,data) -> "ChainLink":
-        poke_api_id = data.id
+        #poke_api_id = data.id
         chain = cls(is_baby = data.is_baby)
         #cls._cache[evolution_chain.poke_api_id] = evolution_chain
         return chain
@@ -75,15 +78,19 @@ class ChainLink(Base):
         self.id = get_next_id()
         self.is_baby = is_baby
 
+    def compare(self, data):
+        if self.is_baby != data.is_baby:
+            self.is_baby = data.is_baby
+
 
 class EvolutionDetail(Base):
     __tablename__ = "EvolutionDetail"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    evolution_chain_key: Mapped[int] = mapped_column(Integer)
+    chain_link_key: Mapped[int] = mapped_column(Integer)
     pokemon_key: Mapped[int] = mapped_column(Integer)
     trigger_key: Mapped[int] = mapped_column(Integer)
     item_key: Mapped[Optional[int]] = mapped_column(Integer)
-    gender: Mapped[Optional[int]] = mapped_column(Integer) # What is this?
+    gender: Mapped[Optional[int]] = mapped_column(TinyInteger) # What is this?
     held_item_key: Mapped[Optional[int]] = mapped_column(Integer)
     known_move_key: Mapped[Optional[int]] = mapped_column(Integer)
     known_move_type_key: Mapped[Optional[int]] = mapped_column(Integer)
@@ -100,9 +107,9 @@ class EvolutionDetail(Base):
     trade_species_key: Mapped[Optional[int]] = mapped_column(Integer)
     turn_upside_down: Mapped[bool] = mapped_column(Boolean)
 
-    evolution_chain: Mapped["ChainLink"] = relationship(back_populates="evolution_details",
+    chain_link: Mapped["ChainLink"] = relationship(back_populates="evolution_details",
                                                              primaryjoin="EvolutionDetail.evolution_chain_key == ChainLink.id",
-                                                             foreign_keys=evolution_chain_key)
+                                                             foreign_keys=chain_link_key)
     pokemon: Mapped["Pokemon"] = relationship(back_populates="evolution_details",
                                               primaryjoin="EvolutionDetail.pokemon_key == Pokemon.id",
                                               foreign_keys=pokemon_key)
@@ -133,8 +140,61 @@ class EvolutionDetail(Base):
     trade_species: Mapped["PokemonSpecies"] = relationship(back_populates="trade_evolution_details",
                                                            primaryjoin="EvolutionDetail.trade_species_key == PokemonSpecies.id",
                                                            foreign_keys=trade_species_key)
+    
+    @classmethod
+    def parse_data(cls, details_data) -> "EvolutionDetail":
+        gender = details_data.gender
+        min_level = details_data.min_level
+        min_happiness = details_data.min_happiness
+        min_beauty = details_data.min_beauty
+        min_affection = details_data.min_affection
+        needs_overworld_rain = details_data.needs_overworld_rain
+        relative_physical_stats = details_data.relative_physical_stats
+        time_of_day = details_data.time_of_day
+        turn_upside_down = details_data.turn_upside_down
+        details = cls(gender=gender, min_level=min_level, min_happiness=min_happiness, min_beauty=min_beauty, min_affection=min_affection,
+                      needs_overworld_rain=needs_overworld_rain, relative_physical_stats=relative_physical_stats, time_of_day=time_of_day,
+                      turn_upside_down=turn_upside_down, details=details)
+        
+        # cache?
+        return details
 
-class EvolutionTrigger(Base):
+
+    def __init__(self, gender: int = None, min_level: int = None, min_happiness: int = None, min_beauty: int = None, min_affection: int = None,
+                 needs_overworld_rain: bool = False, relative_physical_stats: int = None, time_of_day: str = None, turn_upside_down: bool = False):
+        self.id = get_next_id()
+
+        self.gender = gender
+        self.min_level = min_level
+        self.min_happiness = min_happiness
+        self.min_beauty = min_beauty
+        self.min_affection = min_affection
+        self.needs_overworld_rain = needs_overworld_rain
+        self.relative_physical_stats = relative_physical_stats
+        self.time_of_day = time_of_day
+        self.turn_upside_down = turn_upside_down
+
+    def compare(self, details_data):
+        if self.gender != details_data.gender:
+            self.gender = details_data.gender
+        if self.min_level != details_data.min_level:
+            self.min_level = details_data.min_level
+        if self.min_happiness != details_data.min_happiness:
+            self.min_happiness = details_data.min_happiness
+        if self.min_beauty != details_data.min_beauty:
+            self.min_beauty = details_data.min_beauty
+        if self.min_affection != details_data.min_affection:
+            self.min_affection = details_data.min_affection
+        if self.needs_overworld_rain != details_data.needs_overworld_rain:
+            self.needs_overworld_rain = details_data.needs_overworld_rain
+        if self.relative_physical_stats != details_data.relative_physical_stats:
+            self.relative_physical_stats = details_data.relative_physical_stats
+        if self.time_of_day != details_data.time_of_day:
+            self.time_of_day = details_data.time_of_day
+        if self.turn_upside_down != details_data.turn_upside_down:
+            self.turn_upside_down = details_data.turn_upside_down
+
+class EvolutionTrigger(Base, PokeApiResource):
     __tablename__ = "EvolutionTrigger"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -143,3 +203,20 @@ class EvolutionTrigger(Base):
                                                                primaryjoin="EvolutionTrigger.id == foreign(EvolutionTriggerName.object_key)")
     evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="trigger",
                                                                    primaryjoin="EvolutionTrigger.id == foreign(EvolutionDetail.trigger_key)")
+    
+    @classmethod
+    def parse_data(cls, data) -> "EvolutionTrigger":
+        poke_api_id = data.id
+        trigger = cls(poke_api_id = poke_api_id, name = data.name)
+        cls._cache[trigger.poke_api_id] = trigger
+
+        return trigger
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.poke_api_id = poke_api_id
+        self.id = get_next_id()
+        self.name = name
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name

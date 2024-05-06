@@ -2,7 +2,7 @@ import time
 import logging
 from typing import Callable, List, TYPE_CHECKING, Dict, Type
 
-from sqlalchemy import delete, inspect
+from sqlalchemy import delete, inspect, select
 from requests.exceptions import HTTPError
 import pokebase
 from pokebase.interface import APIResource
@@ -10,7 +10,7 @@ from pokebase.interface import APIResource
 from Base import Session, PokeApiResource
 from Berries import Berry
 from Contests import ContestChain
-from Evolution import EvolutionChain, ChainLink
+from Evolution import EvolutionChain, ChainLink, EvolutionDetail, EvolutionTrigger
 from Encounters import Encounter
 from Games import Generation
 from Items import Item
@@ -276,8 +276,123 @@ class PokeBaseWrapper:
 
         return evolution_chain
     
-    def process_chain_link(chain_data, evolves_from: ChainLink = None) -> ChainLink:
-        chain = ChainLink.parse_data(chain_data)
+    def process_chain_link(self, chain_data, evolves_from: ChainLink = None) -> ChainLink:
+        link_species_id = chain_data.species.id_
+        link_species = self.process_pokemon_species(link_species_id)
+
+        processing_key = "ChainLink:"+str(link_species_id)
+        if processing_key in self._processing:
+            logger.debug("process_chain_link: chain link for species_id: %s already being processed", link_species_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            with Session() as session:
+                chain = session.scalars(select(ChainLink).filter_by(species_key=link_species.id)).first()
+                if chain:
+                    chain.compare(chain_data)
+                else:
+                    chain = ChainLink.parse_data(chain_data)
+
+                session.add(chain)
+
+                chain.species = link_species
+                chain.species_key = link_species.id
+                if evolves_from:
+                    chain.evolves_from = evolves_from
+                    chain.evolves_from_key = evolves_from.id
+
+                #evolves_to
+                for evolves_to_data in chain_data.evolves_to:
+                    evolves_to = self.process_chain_link(evolves_to_data, chain)
+
+                #evolution_details
+                for evolution_details_data in chain_data.evolution_details:
+                    evolution_details = self.process_evolution_details(evolution_details_data, chain)
+        finally:
+            self._processing.remove(processing_key)
+
+    def process_evolution_details(self, details_data, chain: ChainLink) -> EvolutionDetail:
+        processing_key = "EvolutionDetails:"+str(chain.id)+":"+str(details_data.trigger.id_)
+        if processing_key in self._processing:
+            logger.debug("process_evolution_details: evolution details for chain.id: %s and trigger.poke_api_id: %s already being processed", chain.id, details_data.trigger.id_)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            with Session() as session:
+                details = session.scalars(select(EvolutionDetail).filter_by(species_key=link_species.id)).first()
+                if details:
+                    details.compare(details_data)
+                else:
+                    details = EvolutionDetail.parse_data(details_data)
+
+                session.add(details)
+
+                details.chain_link = chain
+                details.chain_link_key = chain.id
+
+                #pokemon # How?!
+                # need to process species.varieties before evolution chain
+                # That will give unique attribute to query on above
+                # The pokemon in varieties should (hopefully!) be in the same order as evolution details
+                # but varieties will also contain megas
+                # slowbros varieties are [slowbro, mega, galar]
+                # slowbros evo details are [slowbro, galar]
+                # so need to filter megas from varieties and then apply to evo details
+                pokemon_key: Mapped[int] = mapped_column(Integer)
+
+                trigger = self.process_evolution_trigger(details_data.trigger.id_)
+                details.trigger = trigger
+                details.trigger_key = trigger.id
+
+                if details_data.item:
+                    item = self.process_item(details_data.item.id_)
+                    details.item = item
+                    details.item_key = item.id
+
+                if details_data.held_item:
+                    held_item = self.process_item(details_data.held_item.id_)
+                    details.held_item = held_item
+                    details.held_item_key = held_item.id
+
+                if details_data.known_move:
+                    known_move = self.process_move(details_data.known_move.id_)
+                    details.known_move = known_move
+                    details.known_move_key = known_move.id
+
+                if details_data.known_move_type:
+                    known_move_type = self.process_pokemon_type(details_data.known_move_type.id_)
+                    details.known_move_type = known_move_type
+                    details.known_move_type_key = known_move_type.id
+
+                if details_data.location:
+                    location = self.process_location(details_data.location.id_)
+                    details.location = location
+                    details.location_key = location.id
+
+                if details_data.party_species:
+                    party_species = self.process_pokemon_species(details_data.party_species.id_)
+                    details.party_species = party_species
+                    details.party_species_key = party_species.id
+
+                if details_data.party_type:
+                    party_type = self.process_pokemon_type(details_data.party_type.id_)
+                    details.party_type = party_type
+                    details.party_type_key = party_type.id
+
+                if details_data.trade_species:
+                    trade_species = self.process_pokemon_species(details_data.trade_species.id_)
+                    details.trade_species = trade_species
+                    details.trade_species_key = trade_species.id
+
+        finally:
+            self._processing.remove(processing_key)
+
+    
+    @api_resource(EvolutionTrigger)
+    def process_evolution_trigger(trigger: EvolutionTrigger, trigger_data: APIResource, self, trigger_id: int, ignore_404: bool = False) -> EvolutionTrigger:
+        return trigger
 
 
     def process_pokemon_species_old(self, species_id: int) -> PokemonSpecies: 
