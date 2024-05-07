@@ -138,7 +138,7 @@ class GrowthRateExperienceLevel(Base):
                                             primaryjoin="GrowthRate.id == GrowthRateExperienceLevel.growth_rate_key",
                                             foreign_keys=growth_rate_key)
 
-class PokemonNature(Base):
+class PokemonNature(Base, PokeApiResource):
     __tablename__ = "PokemonNature"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -176,14 +176,38 @@ class PokemonNature(Base):
 
     names: Mapped[List["PokemonNatureName"]] = relationship(back_populates="object_ref",
                                                               primaryjoin="PokemonNature.id == foreign(PokemonNatureName.object_key)")
+    
+    _cache: Dict[int, "PokemonNature"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_PokemonNature_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "PokemonNature":
+        poke_api_id = data.id_
+        name = data.name
+
+        nature = cls(poke_api_id=poke_api_id, name=name)
+        cls._cache[nature.poke_api_id] = nature
+        return nature
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
 
 class MoveBattleStylePreference(Base):
     __tablename__ = "MoveBattleStylePreference"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     move_battle_style_key: Mapped[int] = mapped_column(Integer)
     pokemon_nature_key: Mapped[int] = mapped_column(Integer)
-    low_hp_preference: Mapped[int] = mapped_column(Integer)
-    high_hp_preference: Mapped[int] = mapped_column(Integer)
+    low_hp_preference: Mapped[int] = mapped_column(TinyInteger)
+    high_hp_preference: Mapped[int] = mapped_column(TinyInteger)
 
     move_battle_style: Mapped["MoveBattleStyle"] = relationship(back_populates="preference",
                                             primaryjoin="MoveBattleStyle.id == MoveBattleStylePreference.move_battle_style_key",
@@ -192,8 +216,30 @@ class MoveBattleStylePreference(Base):
                                             primaryjoin="PokemonNature.id == MoveBattleStylePreference.pokemon_nature_key",
                                             foreign_keys=pokemon_nature_key)
 
+    @classmethod
+    def parse_data(cls,data) -> "MoveBattleStylePreference":
+        #poke_api_id = data.id_
+        low_hp_preference = data.low_hp_preference
+        high_hp_preference = data.high_hp_preference
 
-class Pokemon(Base):
+        mbsp = cls(low_hp_preference=low_hp_preference, high_hp_preference=high_hp_preference)
+        #cls._cache[mbsp.poke_api_id] = mbsp
+        return mbsp
+    
+    def __init__(self, low_hp_preference: int, high_hp_preference: int):
+        self.id = get_next_id()
+        #self.poke_api_id = poke_api_id
+        self.low_hp_preference = low_hp_preference
+        self.high_hp_preference = high_hp_preference
+
+    def compare(self, data):
+        if self.low_hp_preference != data.low_hp_preference:
+            self.low_hp_preference = data.low_hp_preference
+        if self.high_hp_preference != data.high_hp_preference:
+            self.high_hp_preference = data.high_hp_preference
+
+
+class Pokemon(Base, PokeApiResource):
     __tablename__ = "Pokemon"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     species_key: Mapped[int] = mapped_column(Integer)
@@ -219,6 +265,13 @@ class Pokemon(Base):
     speed: Mapped[int] = mapped_column(Integer)
     # virtual computed column?
     bst: Mapped[int] = mapped_column(Integer,Computed('hp+attack+defense+special_attack+special_defense+speed',persisted=False))
+
+    hp_ev: Mapped[Optional[int]] = mapped_column(Integer)
+    attack_ev: Mapped[Optional[int]] = mapped_column(Integer)
+    defense_ev: Mapped[Optional[int]] = mapped_column(Integer)
+    special_attack_ev: Mapped[Optional[int]] = mapped_column(Integer)
+    special_defense_ev: Mapped[Optional[int]] = mapped_column(Integer)
+    speed_ev: Mapped[Optional[int]] = mapped_column(Integer)
     
     type_1: Mapped["PokemonType"] = relationship(back_populates="main_types",
                                             primaryjoin="Pokemon.type_1_key == PokemonType.id",
@@ -264,6 +317,50 @@ class Pokemon(Base):
     
     #sprites # don't need these if we want sprites, can download them from github https://github.com/PokeAPI/sprites#sprites
     #cries # https://github.com/PokeAPI/cries#cries
+
+    _cache: Dict[int, "Pokemon"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_Pokemon_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "Pokemon":
+        poke_api_id = data.id_
+        name = data.name
+        base_experience = data.base_experience
+        height = data.height
+        weight = data.weight
+        is_default = data.is_default
+        order = data.order
+
+        pokemon = cls(poke_api_id=poke_api_id, name=name, base_experience=base_experience, height=height, weight=weight, is_default=is_default, order=order)
+        cls._cache[pokemon.poke_api_id] = pokemon
+        return pokemon
+    
+    def __init__(self, poke_api_id: int, name: str, base_experience: int, height: int, weight: int, is_default: bool, order: int):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+        self.base_experience = base_experience
+        self.height = height
+        self.weight = weight
+        self.is_default = is_default
+        self.order = order
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
+        if self.base_experience != data.base_experience:
+            self.base_experience = data.base_experience
+        if self.height != data.height:
+            self.height = data.height
+        if self.weight != data.weight:
+            self.weight = data.weight
+        if self.is_default != data.is_default:
+            self.is_default = data.is_default
+        if self.order != data.order:
+            self.order = data.order
 
 class PokemonHeldItem(Base):
     __tablename__ = "PokemonHeldItem"
@@ -344,7 +441,7 @@ class PokemonColor(Base, PokeApiResource):
 
     def compare(self, data):
         if self.name != data.name:
-            self.name == data.name
+            self.name = data.name
 
 class PokemonForm(Base):
     __tablename__ = "PokemonForm"
@@ -413,7 +510,7 @@ class PokemonHabitat(Base, PokeApiResource):
 
     def compare(self, data):
         if self.name != data.name:
-            self.name == data.name
+            self.name = data.name
 
 class PokemonShape(Base, PokeApiResource):
     __tablename__ = "PokemonShape"
@@ -450,7 +547,7 @@ class PokemonShape(Base, PokeApiResource):
 
     def compare(self, data):
         if self.name != data.name:
-            self.name == data.name
+            self.name = data.name
 
 class PokemonSpecies(Base, PokeApiResource):
     __tablename__ = "PokemonSpecies"
@@ -605,7 +702,7 @@ class PokemonSpecies(Base, PokeApiResource):
         pass
 
 # Stats
-class PokemonStat(Base):
+class PokemonStat(Base, PokeApiResource):
     # Used for both battle stats and pokeathlon stats
     __tablename__ = "PokemonStat"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
@@ -635,6 +732,38 @@ class PokemonStat(Base):
 
     names: Mapped[List["PokemonStatName"]] = relationship(back_populates="object_ref",
                                                           primaryjoin="PokemonStat.id == foreign(PokemonStatName.object_key)")
+    
+    _cache: Dict[int, "PokemonStat"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_PokemonStat_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "PokemonStat":
+        poke_api_id = data.id_
+        name = data.name
+        game_index = data.game_index
+        is_battle_only = data.is_battle_only
+
+        stat = cls(poke_api_id=poke_api_id, name=name, game_index=game_index, is_battle_only=is_battle_only)
+        cls._cache[stat.poke_api_id] = stat
+        return stat
+    
+    def __init__(self, poke_api_id: int, name: str, game_index: int, is_battle_only: bool):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+        self.game_index = game_index
+        self.is_battle_only = is_battle_only
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
+        if self.game_index != data.game_index:
+            self.game_index = data.game_index
+        if self.is_battle_only != data.is_battle_only:
+            self.is_battle_only = data.is_battle_only
 
 """ class MoveStatAffect(Base):
     __tablename__ = "MoveStatAffect"

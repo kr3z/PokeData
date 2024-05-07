@@ -15,8 +15,8 @@ from Encounters import Encounter
 from Games import Generation
 from Items import Item
 from Locations import Region, Location
-from Moves import Move, MoveLearnMethod, Machine
-from Pokemon import PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat
+from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle
+from Pokemon import Pokemon, PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat, PokemonStat, PokemonNature, MoveBattleStylePreference
 from TextEntries import Language, TextEntry
 
 logger = logging.getLogger('PokeBase')
@@ -26,12 +26,18 @@ class ProcessingInProgressException(Exception):
     pass
 
 POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
-    PokemonSpecies: pokebase.pokemon_species,
+    EvolutionChain: pokebase.evolution_chain,
+    EvolutionTrigger: pokebase.evolution_trigger,
+    MoveBattleStyle: pokebase.move_battle_style,
     EggGroup: pokebase.egg_group,
-    Language: pokebase.language,
+    PokemonNature: pokebase.nature,
+    Pokemon: pokebase.pokemon,
+    PokemonSpecies: pokebase.pokemon_species,
     PokemonColor: pokebase.pokemon_color, 
     PokemonShape: pokebase.pokemon_shape,
-    PokemonHabitat: pokebase.pokemon_habitat
+    PokemonHabitat: pokebase.pokemon_habitat,
+    PokemonStat: pokebase.stat,
+    Language: pokebase.language
 }
 
 def rate_limit(func: Callable):
@@ -100,7 +106,7 @@ def api_resource(T: Type[PokeApiResource]):
                         logger.debug("Process %s: id_: %s not in cache, retrieving from api", type_name, id_)
                         api_object = T.parse_data(object_data)
 
-                    ret = func(api_object, object_data, self,*args, **kwargs)
+                    api_object = func(api_object, object_data, self,*args, **kwargs)
 
                     self._session.add(api_object)
 
@@ -193,8 +199,92 @@ class PokeBaseWrapper:
             #    return None
         return species_data """
     
+# Moves
+    @api_resource(MoveBattleStyle)
+    def process_move_battle_style(mbs: MoveBattleStyle, mbs_data: APIResource, self, id_: int, ignore_404: bool = False) -> MoveBattleStyle:
+        return mbs
+    
+# Pokemon
+    
+    @api_resource(PokemonNature)
+    def process_nature(nature: PokemonNature, nature_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonNature:
+    
+        decreased_stat_data = nature_data.decreased_stat
+        decreased_stat = self.process_stat(decreased_stat_data.id_)
+        nature.decreased_stat = decreased_stat
+        nature.decreased_stat_key = decreased_stat.id
+
+        increased_stat_data = nature_data.increased_stat
+        increased_stat = self.process_stat(increased_stat_data.id_)
+        nature.increased_stat = increased_stat
+        nature.increased_stat_key = increased_stat.id
+
+        decreased_pokeathlon_stat_key: Mapped[int] = mapped_column(Integer)
+        increased_pokeathlon_stat_key: Mapped[int] = mapped_column(Integer)
+
+        max_pokeathlon_increase: Mapped[int] = mapped_column(Integer)
+        max_pokeathlon_decrease: Mapped[int] = mapped_column(Integer)
+
+        hates_flavor_data = nature_data.hates_flavor
+        hates_flavor = self.process_berry_flavor(hates_flavor_data.id_)
+        nature.hates_flavor = hates_flavor
+        nature.hates_flavor_key = hates_flavor.id
+
+        likes_flavor_data = nature_data.likes_flavor
+        likes_flavor = self.process_berry_flavor(likes_flavor_data.id_)
+        nature.likes_flavor = likes_flavor
+        nature.likes_flavor_key = likes_flavor.id
+
+        for mbsp_data in nature_data.move_battle_style_preferences:
+            mbsp = self.process_move_battle_style_pref(mbsp_data, nature)
+
+    def process_move_battle_style_pref(self,mbsp_data, nature: PokemonNature) -> MoveBattleStylePreference:
+        mbsp = MoveBattleStylePreference.parse_data(mbsp_data)
+        mbsp.pokemon_nature = nature
+        mbsp.pokemon_nature_key = nature.id
+
+        mbs = self.process_move_battle_style(mbsp_data.move_battle_style.id_)
+        mbsp.move_battle_style = mbs
+        mbsp.move_battle_style_key = mbs.id
+
+    @api_resource(Pokemon)
+    def process_pokemon(pokemon: Pokemon, pokemon_data: APIResource, self, id_: int, ignore_404: bool = False) -> Pokemon:
+
+        # process stats
+        for stat_data in pokemon_data.stats:
+            stat = self.process_stat(stat_data.stat.id_)
+            if stat.name == 'hp':
+                pokemon.hp = stat.base_stat
+                pokemon.hp_ev = stat.effort
+            elif stat.name == 'attack':
+                pokemon.attack = stat.base_stat
+                pokemon.attack_ev = stat.effort
+            elif stat.name == 'defense':
+                pokemon.defense = stat.base_stat
+                pokemon.defense_ev = stat.effort
+            elif stat.name == 'special-attack':
+                pokemon.special_attack = stat.base_stat
+                pokemon.special_attack_ev = stat.effort
+            elif stat.name == 'special-defense':
+                pokemon.special_defense = stat.base_stat
+                pokemon.special_defense_ev = stat.effort
+            elif stat.name == 'speed':
+                pokemon.speed = stat.base_stat
+                pokemon.speed_ev = stat.effort
+            else:
+                logger.error("Unknown stat found: %s", stat.name)
+                raise
+
+    species_key: Mapped[int] = mapped_column(Integer)
+
+    type_1_key: Mapped[int] = mapped_column(Integer)
+    type_2_key: Mapped[Optional[int]] = mapped_column(Integer)
+    ability_1_key: Mapped[int] = mapped_column(Integer)
+    ability_2_key: Mapped[Optional[int]] = mapped_column(Integer)
+    hidden_ability_key: Mapped[Optional[int]] = mapped_column(Integer)
+    
     @api_resource(PokemonSpecies)
-    def process_pokemon_species(species: PokemonSpecies, species_data: APIResource, self, species_id: int, ignore_404: bool = False) -> PokemonSpecies:
+    def process_pokemon_species(species: PokemonSpecies, species_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonSpecies:
         #links = {}
 
         if species_data.evolves_from_species:
@@ -206,6 +296,12 @@ class PokeBaseWrapper:
 
             #links['evolves_from_species_key'] = evolves_from_species.id
             #links['evolves_from_species'] = evolves_from_species
+
+        # varieties
+        for variety in species_data.varieties:
+            pokemon_id = variety.pokemon.id_
+            pokemon = self.process_pokemon(pokemon_id)
+
 
         #egg_groups = []
         egg_group_1_id = species_data.egg_groups[0].id_
@@ -247,19 +343,41 @@ class PokeBaseWrapper:
         return species
 
     @api_resource(PokemonColor)
-    def process_pokemon_color(color: PokemonColor, color_data: APIResource, self, color_id: int, ignore_404: bool = False) -> PokemonColor:
+    def process_pokemon_color(color: PokemonColor, color_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonColor:
         return color
     
     @api_resource(PokemonShape)
-    def process_pokemon_shape(shape: PokemonShape, shape_data: APIResource, self, shape_id: int, ignore_404: bool = False) -> PokemonShape:
+    def process_pokemon_shape(shape: PokemonShape, shape_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonShape:
         return shape
 
     @api_resource(PokemonHabitat)
-    def process_pokemon_habitat(habitat: PokemonHabitat, habitat_data: APIResource, self, habitat_id: int, ignore_404: bool = False) -> PokemonHabitat:
+    def process_pokemon_habitat(habitat: PokemonHabitat, habitat_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonHabitat:
         return habitat
     
+    @api_resource(PokemonStat)
+    def process_stat(stat: PokemonStat, stat_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonStat:
+        damage_class_id = stat_data.damage_class.id_
+        damage_class = self.process_damage_class(damage_class_id)
+        stat.damage_class = damage_class
+        stat.damage_class_key = damage_class.id
+
+        for characteristic_data in stat_data.characteristics:
+            characteristic = self.process_characteristic(characteristic_data.id_)
+
+        for nature_data in stat_data.affecting_natures.decrease:
+            nature = self.process_nature(nature_data.id_)
+
+        for nature_data in stat_data.affecting_natures.increase:
+            nature = self.process_nature(nature_data.id_)
+
+        # Pokeathlon stat is a separate API resource, but I'd like to combine with regular stat
+        # Maybe just use the same table, but separate objects?
+    decreasing_pokeathlon_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="decreased_pokeathlon_stat",
+                                                              primaryjoin="PokemonStat.id == foreign(PokemonNature.decreased_pokeathlon_stat_key)")
+    increasing_pokeathlon_natures
+    
     @api_resource(EvolutionChain)
-    def process_evolution_chain(evolution_chain: EvolutionChain, evolution_chain_data: APIResource, self, evolution_chain_id: int, ignore_404: bool = False) -> EvolutionChain:
+    def process_evolution_chain(evolution_chain: EvolutionChain, evolution_chain_data: APIResource, self, id_: int, ignore_404: bool = False) -> EvolutionChain:
 
         #baby_trigger_item
         if evolution_chain.baby_trigger_item:
@@ -391,7 +509,7 @@ class PokeBaseWrapper:
 
     
     @api_resource(EvolutionTrigger)
-    def process_evolution_trigger(trigger: EvolutionTrigger, trigger_data: APIResource, self, trigger_id: int, ignore_404: bool = False) -> EvolutionTrigger:
+    def process_evolution_trigger(trigger: EvolutionTrigger, trigger_data: APIResource, self, id_: int, ignore_404: bool = False) -> EvolutionTrigger:
         return trigger
 
 

@@ -1,9 +1,9 @@
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Float, Computed, UniqueConstraint, Index, Boolean
 from sqlalchemy import Table, Column, ForeignKey
 
-from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink
+from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, get_next_id
 
 if TYPE_CHECKING:
     from Contests import ContestType, ContestEffect, SuperContestEffect, ContestChain, SuperContestChain
@@ -161,6 +161,30 @@ class MoveBattleStyle(Base):
 
     names: Mapped[List["MoveBattleStyleName"]] = relationship(back_populates="object_ref",
                                                                   primaryjoin="MoveBattleStyle.id == foreign(MoveBattleStyleName.object_key)")
+    
+    _cache: Dict[int, "MoveBattleStyle"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_MoveBattleStyle_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "MoveBattleStyle":
+        poke_api_id = data.id_
+        name = data.name
+
+        mbs = cls(poke_api_id=poke_api_id, name=name)
+        cls._cache[mbs.poke_api_id] = mbs
+        return mbs
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
 
 class MoveCategory(Base):
     __tablename__ = "MoveCategory"
