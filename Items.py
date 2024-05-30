@@ -25,10 +25,10 @@ class Item(Base):
     berry_key: Mapped[Optional[int]] = mapped_column(Integer)
     sprite_url: Mapped[str] = mapped_column(String(500))
 
-    fling_effect: Mapped["ItemFlingEffect"] = relationship(back_populates="items",
+    fling_effect: Mapped["ItemFlingEffect"] = relationship(back_populates="items", cascade="save-update",
                                                            primaryjoin="Item.fling_effect_key == ItemFlingEffect.id",
                                                            foreign_keys=fling_effect_key)
-    category: Mapped["ItemCategory"] = relationship(back_populates="items",
+    category: Mapped["ItemCategory"] = relationship(back_populates="items", cascade="save-update",
                                                     primaryjoin="Item.category_key == ItemCategory.id",
                                                     foreign_keys=category_key)
     baby_trigger_for: Mapped["EvolutionChain"] = relationship(#back_populates="baby_trigger_item",
@@ -39,14 +39,14 @@ class Item(Base):
                                           primaryjoin="Item.berry_key == Berry.id",
                                           foreign_keys=berry_key)
 
-    attributes: Mapped[List["ItemAttribute"]] = relationship(back_populates="items",
+    attributes: Mapped[List["ItemAttribute"]] = relationship(back_populates="items", cascade="save-update",
                                                              secondary=ItemToItemAttributeLink)
     game_indices: Mapped[List["ItemGameIndex"]] = relationship(back_populates="object_ref",
                                                                primaryjoin="Item.id == foreign(ItemGameIndex.object_key)")
     held_by_pokemon: Mapped[List["PokemonHeldItem"]] = relationship(back_populates="item",
                                             primaryjoin="Item.id == foreign(PokemonHeldItem.item_key)")
     
-    machines: Mapped[List["Machine"]] = relationship(back_populates="item",
+    machines: Mapped[List["Machine"]] = relationship(back_populates="item", cascade="save-update",
                                                      primaryjoin="Item.id == foreign(Machine.item_key)")
     
     evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="item",
@@ -55,11 +55,11 @@ class Item(Base):
     held_evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="held_item",
                                                                       primaryjoin="Item.id == foreign(EvolutionDetail.held_item_key)")
 
-    effect_entries: Mapped[List["ItemEffect"]] = relationship(back_populates="object_ref",
+    effect_entries: Mapped[List["ItemEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Item.id == foreign(ItemEffect.object_key)")
-    flavor_text_entries: Mapped[List["ItemFlavorText"]] = relationship(back_populates="object_ref",
+    flavor_text_entries: Mapped[List["ItemFlavorText"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Item.id == foreign(ItemFlavorText.object_key)")
-    names: Mapped[List["ItemName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["ItemName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Item.id == foreign(ItemName.object_key)")
 
 '''class ItemHolder(Base):
@@ -92,13 +92,13 @@ class ItemCategory(Base):
     name: Mapped[str] = mapped_column(String(100))
     pocket_key: Mapped[int] = mapped_column(Integer)
 
-    pocket: Mapped["ItemPocket"] = relationship(back_populates="categories",
+    pocket: Mapped["ItemPocket"] = relationship(back_populates="categories", cascade="save-update",
                                                 primaryjoin="ItemCategory.pocket_key == ItemPocket.id",
                                                 foreign_keys=pocket_key)
 
-    items: Mapped[List["Item"]] = relationship(back_populates="category",
+    items: Mapped[List["Item"]] = relationship(back_populates="category", cascade="save-update",
                                                primaryjoin="ItemCategory.id == foreign(Item.category_key)")
-    names: Mapped[List["ItemCategoryName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["ItemCategoryName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="ItemCategory.id == foreign(ItemCategoryName.object_key)")
 
 class ItemFlingEffect(Base):
@@ -106,11 +106,11 @@ class ItemFlingEffect(Base):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    items: Mapped[List["Item"]] = relationship(back_populates="fling_effect",
+    items: Mapped[List["Item"]] = relationship(back_populates="fling_effect", cascade="save-update",
                                                primaryjoin="ItemFlingEffect.id == foreign(Item.fling_effect_key)")
-    effect_entries: Mapped[List["ItemFlingEffectEffect"]] = relationship(back_populates="object_ref",
+    effect_entries: Mapped[List["ItemFlingEffectEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="ItemFlingEffect.id == foreign(ItemFlingEffectEffect.object_key)")
-    names: Mapped[List["ItemFlingEffectName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["ItemFlingEffectName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="ItemFlingEffect.id == foreign(ItemFlingEffectName.object_key)")
 
 class ItemPocket(Base):
@@ -120,5 +120,5 @@ class ItemPocket(Base):
 
     categories: Mapped[List["ItemCategory"]] = relationship(back_populates="pocket",
                                                             primaryjoin="ItemPocket.id == foreign(ItemCategory.pocket_key)")
-    names: Mapped[List["ItemPocketName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["ItemPocketName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="ItemPocket.id == foreign(ItemPocketName.object_key)")

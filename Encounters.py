@@ -17,7 +17,7 @@ class Encounter(Base):
     method_key: Mapped[int] = mapped_column(Integer)
     pokemon_encounter_key: Mapped[int] = mapped_column(Integer)
 
-    method: Mapped["EncounterMethod"] = relationship(back_populates="encounters",
+    method: Mapped["EncounterMethod"] = relationship(back_populates="encounters", cascade="save-update",
                                                      primaryjoin="Encounter.method_key == EncounterMethod.id",
                                                      foreign_keys=method_key)
     pokemon_encounter: Mapped["PokemonEncounter"] = relationship(back_populates="encounter_details",
@@ -34,7 +34,7 @@ class EncounterMethod(Base):
     encounters: Mapped[List["Encounter"]] = relationship(back_populates="method",
                                                         primaryjoin="EncounterMethod.id == foreign(Encounter.method_key)")
 
-    names: Mapped[List["EncounterMethodName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["EncounterMethodName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="EncounterMethod.id == foreign(EncounterMethodName.object_key)")
 
 class EncounterCondition(Base):
@@ -42,9 +42,9 @@ class EncounterCondition(Base):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    names: Mapped[List["EncounterConditionName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["EncounterConditionName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="EncounterCondition.id == foreign(EncounterConditionName.object_key)")
-    values: Mapped[List["EncounterConditionValue"]] = relationship(back_populates="condition",
+    values: Mapped[List["EncounterConditionValue"]] = relationship(back_populates="condition", cascade="save-update",
                                                                    primaryjoin="EncounterCondition.id == foreign(EncounterConditionValue.condition_key)")
 
 class EncounterConditionValue(Base):
@@ -53,11 +53,11 @@ class EncounterConditionValue(Base):
     name: Mapped[str] = mapped_column(String(100))
     condition_key: Mapped[int] = mapped_column(Integer)
 
-    condition: Mapped["EncounterCondition"] = relationship(back_populates="values",
+    condition: Mapped["EncounterCondition"] = relationship(back_populates="values", cascade="save-update",
                                                            primaryjoin="EncounterConditionValue.condition_key == EncounterCondition.id",
                                                            foreign_keys=condition_key)
 
     encounters: Mapped[List["Encounter"]] = relationship(back_populates="condition_values", secondary=EncounterToEncounterCondValLink)
 
-    names: Mapped[List["EncounterConditionValueName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["EncounterConditionValueName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="EncounterConditionValue.id == foreign(EncounterConditionValueName.object_key)")

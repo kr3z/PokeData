@@ -2,7 +2,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean
 
-from Base import Base, utf8mb4_1000, utf8mb4_200, get_next_id, Session, PokeApiResource
+from Base import Base, utf8mb4_1000, utf8mb4_200, utf8mb4_50, get_next_id, Session, PokeApiResource
 
 if TYPE_CHECKING:
     from Berries import BerryFirmness, BerryFlavor
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from Pokemon import PokemonAbility, PokemonCharacteristic, PokemonSpecies
     from Pokemon import PokemonType, PokemonStat, PokemonNature, PokemonAbility
     from Pokemon import EggGroup, GrowthRate, PokemonColor, PokemonForm, PokemonHabitat
-    from Pokemon import PokemonShape
+    from Pokemon import PokemonShape, PokeathlonStat
     from Moves import Move, DamageClass, PastMoveStatValues, MoveAilment, MoveBattleStyle
     from Moves import MoveCategory, MoveLearnMethod, MoveTarget
     from Items import Item, ItemAttribute, ItemFlingEffect, ItemCategory, ItemPocket
@@ -28,7 +28,7 @@ class Language(Base, PokeApiResource):
     iso639: Mapped[str] = mapped_column(String(10))
     iso3166: Mapped[str] = mapped_column(String(10))
 
-    names: Mapped[List["LanguageName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["LanguageName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                  primaryjoin="Language.id == foreign(LanguageName.object_key)")
 
     __table_args__ = (
@@ -84,7 +84,7 @@ class TextEntry(Base):
     language_key: Mapped[int] = mapped_column(Integer)
 
     language: Mapped["Language"] = relationship(primaryjoin="TextEntry.language_key == Language.id",
-                                                foreign_keys=language_key)
+                                                foreign_keys=language_key, cascade="save-update")
     text_entry: Mapped[str] = mapped_column(utf8mb4_1000)
 
     __mapper_args__ = {
@@ -100,7 +100,8 @@ class TextEntry(Base):
 ###################################
 class VersionGroupTextEntry(TextEntry):
     version_group_key: Mapped[int] = mapped_column(Integer, nullable=True)
-    version_group: Mapped["VersionGroup"] = relationship
+    version_group: Mapped["VersionGroup"] = relationship(primaryjoin="VersionGroupTextEntry.version_group_key == VersionGroup.id",
+                                                        foreign_keys=version_group_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
 
     def __init__(self, data):
@@ -108,7 +109,8 @@ class VersionGroupTextEntry(TextEntry):
 
 class VersionTextEntry(TextEntry):
     version_key: Mapped[int] = mapped_column(Integer, nullable=True)
-    version: Mapped["Version"] = relationship
+    version: Mapped["Version"] = relationship(primaryjoin="VersionTextEntry.version_key == Version.id",
+                                                foreign_keys=version_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
 
     def __init__(self, data):
@@ -151,7 +153,7 @@ class VersionGroupFlavorText(VersionGroupTextEntry):
 
 class LanguageName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer)
-    object_ref: Mapped["Language"] = relationship(back_populates="names",
+    object_ref: Mapped["Language"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="LanguageName.object_key == Language.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "LanguageName"}
@@ -166,7 +168,7 @@ class LanguageName(TextEntry):
 ###################################
 class AbilityEffectChange(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="effect_changes",
+    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="effect_changes", cascade="save-update",
                                             primaryjoin="AbilityEffectChange.object_key == PokemonAbility.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "AbilityEffectChange"}
@@ -178,7 +180,7 @@ class AbilityEffectChange(VersionGroupTextEntry):
 
 class AbilityFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="flavor_text_entries",
+    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="AbilityFlavorText.object_key == PokemonAbility.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "AbilityFlavorText"}
@@ -189,7 +191,7 @@ class AbilityFlavorText(VersionGroupTextEntry):
 
 class AbilityEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="effect_entries",
+    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="AbilityEffect.object_key == PokemonAbility.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "AbilityEffect"}
@@ -200,7 +202,7 @@ class AbilityEffect(VerboseEffect):
 
 class CharacteristicDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonCharacteristic"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["PokemonCharacteristic"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="CharacteristicDescription.object_key == PokemonCharacteristic.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "CharacteristicDescription"}
@@ -211,7 +213,7 @@ class CharacteristicDescription(TextEntry):
 
 class PokemonName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="names", cascade="save-update",
                                                         primaryjoin="PokemonName.object_key == PokemonSpecies.id",
                                                         foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonName"}
@@ -222,7 +224,7 @@ class PokemonName(TextEntry):
 
 class PokemonSpeciesFlavorText(VersionTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="flavor_text_entries",
+    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                                         primaryjoin="PokemonSpeciesFlavorText.object_key == PokemonSpecies.id",
                                                         foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonSpeciesFlavorText"}
@@ -233,7 +235,7 @@ class PokemonSpeciesFlavorText(VersionTextEntry):
 
 class PokemonFormDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="form_descriptions",
+    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="form_descriptions", cascade="save-update",
                                                         primaryjoin="PokemonFormDescription.object_key == PokemonSpecies.id",
                                                         foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonFormDescription"}
@@ -244,7 +246,7 @@ class PokemonFormDescription(TextEntry):
 
 class PokemonGenus(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="genera",
+    object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="genera", cascade="save-update",
                                                         primaryjoin="PokemonGenus.object_key == PokemonSpecies.id",
                                                         foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonGenus"}
@@ -255,7 +257,7 @@ class PokemonGenus(TextEntry):
 
 class PokemonTypeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonType"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonType"] = relationship(back_populates="names", cascade="save-update",
                                                         primaryjoin="PokemonTypeName.object_key == PokemonType.id",
                                                         foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonTypeName"}
@@ -266,7 +268,7 @@ class PokemonTypeName(TextEntry):
 
 class PokemonStatName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonStat"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonStat"] = relationship(back_populates="names", cascade="save-update",
                                                         primaryjoin="PokemonStatName.object_key == PokemonStat.id",
                                                         foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonStatName"}
@@ -275,9 +277,20 @@ class PokemonStatName(TextEntry):
         super().__init__(data)
         self.text_entry = data.name
 
+class PokeathlonStatName(TextEntry):
+    object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
+    object_ref: Mapped["PokeathlonStat"] = relationship(back_populates="names", cascade="save-update",
+                                                        primaryjoin="PokeathlonStatName.object_key == PokeathlonStat.id",
+                                                        foreign_keys=object_key)
+    __mapper_args__ = {"polymorphic_identity": "PokeathlonStatName"}
+    text_entry_name = "name"
+    def __init__(self, data):
+        super().__init__(data)
+        self.text_entry = data.name
+
 class PokemonNatureName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonNature"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonNature"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokemonNatureName.object_key == PokemonNature.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonNatureName"}
@@ -288,7 +301,7 @@ class PokemonNatureName(TextEntry):
 
 class PokemonAbilityName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokemonAbilityName.object_key == PokemonAbility.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonAbilityName"}
@@ -299,7 +312,7 @@ class PokemonAbilityName(TextEntry):
 
 class EggGroupName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["EggGroup"] = relationship(back_populates="names",
+    object_ref: Mapped["EggGroup"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="EggGroupName.object_key == EggGroup.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EggGroupName"}
@@ -310,7 +323,7 @@ class EggGroupName(TextEntry):
 
 class GrowthRateDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["GrowthRate"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["GrowthRate"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="GrowthRateDescription.object_key == GrowthRate.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "GrowthRateDescription"}
@@ -321,7 +334,7 @@ class GrowthRateDescription(TextEntry):
 
 class PokemonColorName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonColor"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonColor"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokemonColorName.object_key == PokemonColor.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonColorName"}
@@ -332,7 +345,7 @@ class PokemonColorName(TextEntry):
 
 class PokemonFormName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonForm"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonForm"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokemonFormName.object_key == PokemonForm.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonFormName"}
@@ -343,7 +356,7 @@ class PokemonFormName(TextEntry):
 
 class PokemonFormFormName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonForm"] = relationship(back_populates="form_names",
+    object_ref: Mapped["PokemonForm"] = relationship(back_populates="form_names", cascade="save-update",
                                             primaryjoin="PokemonFormFormName.object_key == PokemonForm.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonFormFormName"}
@@ -354,7 +367,7 @@ class PokemonFormFormName(TextEntry):
 
 class PokemonHabitatName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonHabitat"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonHabitat"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokemonHabitatName.object_key == PokemonHabitat.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonHabitatName"}
@@ -365,18 +378,18 @@ class PokemonHabitatName(TextEntry):
 
 class PokemonShapeAwesomeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonShape"] = relationship(back_populates="awesome_names",
+    object_ref: Mapped["PokemonShape"] = relationship(back_populates="awesome_names", cascade="save-update",
                                             primaryjoin="PokemonShapeAwesomeName.object_key == PokemonShape.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonShapeAwesomeName"}
-    text_entry_name = "awesom_name"
+    text_entry_name = "awesome_name"
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.awesome_name
 
 class PokemonShapeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonShape"] = relationship(back_populates="names",
+    object_ref: Mapped["PokemonShape"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokemonShapeName.object_key == PokemonShape.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonShapeName"}
@@ -390,7 +403,7 @@ class PokemonShapeName(TextEntry):
 #######################
 class MoveEffectChange(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Move"] = relationship(back_populates="effect_changes",
+    object_ref: Mapped["Move"] = relationship(back_populates="effect_changes", cascade="save-update",
                                             primaryjoin="MoveEffectChange.object_key == Move.id",
                                             foreign_keys=object_key)
     #effect: Mapped[str] = mapped_column(String(200),nullable=True)
@@ -402,7 +415,7 @@ class MoveEffectChange(VersionGroupTextEntry):
 
 class MoveFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Move"] = relationship(back_populates="flavor_text_entries",
+    object_ref: Mapped["Move"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="MoveFlavorText.object_key == Move.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveFlavorText"}
@@ -413,7 +426,7 @@ class MoveFlavorText(VersionGroupTextEntry):
 
 class MoveEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Move"] = relationship(back_populates="effect_entries",
+    object_ref: Mapped["Move"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="MoveEffect.object_key == Move.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveEffect"}
@@ -424,7 +437,7 @@ class MoveEffect(VerboseEffect):
 
 class MoveName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Move"] = relationship(back_populates="names",
+    object_ref: Mapped["Move"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="MoveName.object_key == Move.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveName"}
@@ -435,7 +448,7 @@ class MoveName(TextEntry):
 
 class PastMoveEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PastMoveStatValues"] = relationship(back_populates="effect_entries",
+    object_ref: Mapped["PastMoveStatValues"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="PastMoveEffect.object_key == PastMoveStatValues.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PastMoveEffect"}
@@ -446,7 +459,7 @@ class PastMoveEffect(VerboseEffect):
 
 class MoveAilmentName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveAilment"] = relationship(back_populates="names",
+    object_ref: Mapped["MoveAilment"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="MoveAilmentName.object_key == MoveAilment.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveAilmentName"}
@@ -457,7 +470,7 @@ class MoveAilmentName(TextEntry):
 
 class MoveBattleStyleName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveBattleStyle"] = relationship(back_populates="names",
+    object_ref: Mapped["MoveBattleStyle"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="MoveBattleStyleName.object_key == MoveBattleStyle.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveBattleStyleName"}
@@ -468,7 +481,7 @@ class MoveBattleStyleName(TextEntry):
 
 class MoveCategoryDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveCategory"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["MoveCategory"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="MoveCategoryDescription.object_key == MoveCategory.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveCategoryDescription"}
@@ -479,7 +492,7 @@ class MoveCategoryDescription(TextEntry):
 
 class DamageClassName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["DamageClass"] = relationship(back_populates="names",
+    object_ref: Mapped["DamageClass"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="DamageClassName.object_key == DamageClass.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "DamageClassName"}
@@ -490,7 +503,7 @@ class DamageClassName(TextEntry):
 
 class DamageClassDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["DamageClass"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["DamageClass"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="DamageClassDescription.object_key == DamageClass.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "DamageClassDescription"}
@@ -501,7 +514,7 @@ class DamageClassDescription(TextEntry):
 
 class MoveLearnMethodName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveLearnMethod"] = relationship(back_populates="names",
+    object_ref: Mapped["MoveLearnMethod"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="MoveLearnMethodName.object_key == MoveLearnMethod.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveLearnMethodName"}
@@ -512,7 +525,7 @@ class MoveLearnMethodName(TextEntry):
 
 class MoveLearnMethodDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveLearnMethod"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["MoveLearnMethod"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="MoveLearnMethodDescription.object_key == MoveLearnMethod.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveLearnMethodDescription"}
@@ -523,7 +536,7 @@ class MoveLearnMethodDescription(TextEntry):
 
 class MoveTargetDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveTarget"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["MoveTarget"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="MoveTargetDescription.object_key == MoveTarget.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveTargetDescription"}
@@ -534,7 +547,7 @@ class MoveTargetDescription(TextEntry):
 
 class MoveTargetName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["MoveTarget"] = relationship(back_populates="names",
+    object_ref: Mapped["MoveTarget"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="MoveTargetName.object_key == MoveTarget.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "MoveTargetName"}
@@ -548,7 +561,7 @@ class MoveTargetName(TextEntry):
 ###################################
 class LocationName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Location"] = relationship(back_populates="names",
+    object_ref: Mapped["Location"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="LocationName.object_key == Location.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "LocationName"}
@@ -559,7 +572,7 @@ class LocationName(TextEntry):
 
 class LocationAreaName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["LocationArea"] = relationship(back_populates="names",
+    object_ref: Mapped["LocationArea"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="LocationAreaName.object_key == LocationArea.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "LocationAreaName"}
@@ -570,7 +583,7 @@ class LocationAreaName(TextEntry):
 
 class PalParkAreaName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PalParkArea"] = relationship(back_populates="names",
+    object_ref: Mapped["PalParkArea"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PalParkAreaName.object_key == PalParkArea.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PalParkAreaName"}
@@ -584,7 +597,7 @@ class PalParkAreaName(TextEntry):
 ###################################
 class ItemFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Item"] = relationship(back_populates="flavor_text_entries",
+    object_ref: Mapped["Item"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="ItemFlavorText.object_key == Item.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemFlavorText"}
@@ -595,7 +608,7 @@ class ItemFlavorText(VersionGroupTextEntry):
 
 class ItemEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Item"] = relationship(back_populates="effect_entries",
+    object_ref: Mapped["Item"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="ItemEffect.object_key == Item.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemEffect"}
@@ -606,7 +619,7 @@ class ItemEffect(VerboseEffect):
 
 class ItemName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Item"] = relationship(back_populates="names",
+    object_ref: Mapped["Item"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemName.object_key == Item.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemName"}
@@ -617,7 +630,7 @@ class ItemName(TextEntry):
 
 class ItemAttributeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemAttribute"] = relationship(back_populates="names",
+    object_ref: Mapped["ItemAttribute"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemAttributeName.object_key == ItemAttribute.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemAttributeName"}
@@ -628,7 +641,7 @@ class ItemAttributeName(TextEntry):
 
 class ItemAttributeDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemAttribute"] = relationship(back_populates="names",
+    object_ref: Mapped["ItemAttribute"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemAttributeDescription.object_key == ItemAttribute.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemAttributeDescription"}
@@ -639,7 +652,7 @@ class ItemAttributeDescription(TextEntry):
 
 class ItemCategoryName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemCategory"] = relationship(back_populates="names",
+    object_ref: Mapped["ItemCategory"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemCategoryName.object_key == ItemCategory.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemCategoryName"}
@@ -650,7 +663,7 @@ class ItemCategoryName(TextEntry):
 
 class ItemFlingEffectEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="effect_entries",
+    object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="ItemFlingEffectEffect.object_key == ItemFlingEffect.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemFlingEffectEffect"}
@@ -661,7 +674,7 @@ class ItemFlingEffectEffect(VerboseEffect):
 
 class ItemFlingEffectName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="names",
+    object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemFlingEffectName.object_key == ItemFlingEffect.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemFlingEffectName"}
@@ -672,7 +685,7 @@ class ItemFlingEffectName(TextEntry):
 
 class ItemPocketName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemPocket"] = relationship(back_populates="names",
+    object_ref: Mapped["ItemPocket"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemPocketName.object_key == ItemPocket.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemPocketName"}
@@ -686,7 +699,7 @@ class ItemPocketName(TextEntry):
 ####################################
 class EvolutionTriggerName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["EvolutionTrigger"] = relationship(back_populates="names",
+    object_ref: Mapped["EvolutionTrigger"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="EvolutionTriggerName.object_key == EvolutionTrigger.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EvolutionTriggerName"}
@@ -700,7 +713,7 @@ class EvolutionTriggerName(TextEntry):
 ###################################
 class EncounterMethodName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["EncounterMethod"] = relationship(back_populates="names",
+    object_ref: Mapped["EncounterMethod"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="EncounterMethodName.object_key == EncounterMethod.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EncounterMethodName"}
@@ -711,7 +724,7 @@ class EncounterMethodName(TextEntry):
 
 class EncounterConditionName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["EncounterCondition"] = relationship(back_populates="names",
+    object_ref: Mapped["EncounterCondition"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="EncounterConditionName.object_key == EncounterCondition.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EncounterConditionName"}
@@ -722,7 +735,7 @@ class EncounterConditionName(TextEntry):
 
 class EncounterConditionValueName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["EncounterConditionValue"] = relationship(back_populates="names",
+    object_ref: Mapped["EncounterConditionValue"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="EncounterConditionValueName.object_key == EncounterConditionValue.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EncounterConditionValueName"}
@@ -737,19 +750,20 @@ class EncounterConditionValueName(TextEntry):
 
 class ContestName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ContestType"] = relationship(back_populates="names",
+    object_ref: Mapped["ContestType"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ContestName.object_key == ContestType.id",
                                             foreign_keys=object_key)
-    color: Mapped[str] = mapped_column(String(50), nullable=True)
+    color: Mapped[str] = mapped_column(utf8mb4_50, nullable=True)
     __mapper_args__ = {"polymorphic_identity": "ContestName"}
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.name
+        self.color = data.color
 
 class ContestEffectEffect(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ContestEffect"] = relationship(back_populates="effect_entries",
+    object_ref: Mapped["ContestEffect"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="ContestEffectEffect.object_key == ContestEffect.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ContestEffectEffect"}
@@ -760,7 +774,7 @@ class ContestEffectEffect(TextEntry):
 
 class ContestEffectFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ContestEffect"] = relationship(back_populates="flavor_text_entries",
+    object_ref: Mapped["ContestEffect"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="ContestEffectFlavorText.object_key == ContestEffect.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ContestEffectFlavorText"}
@@ -771,7 +785,7 @@ class ContestEffectFlavorText(VersionGroupTextEntry):
 
 class SuperContestEffectFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["SuperContestEffect"] = relationship(back_populates="flavor_text_entries",
+    object_ref: Mapped["SuperContestEffect"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="SuperContestEffectFlavorText.object_key == SuperContestEffect.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "SuperContestEffectFlavorText"}
@@ -785,7 +799,7 @@ class SuperContestEffectFlavorText(VersionGroupTextEntry):
 ###################################
 class BerryFirmnessName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["BerryFirmness"] = relationship(back_populates="names",
+    object_ref: Mapped["BerryFirmness"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="BerryFirmnessName.object_key == BerryFirmness.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "BerryFirmnessName"}
@@ -796,7 +810,7 @@ class BerryFirmnessName(TextEntry):
 
 class BerryFlavorName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["BerryFlavor"] = relationship(back_populates="names",
+    object_ref: Mapped["BerryFlavor"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="BerryFlavorName.object_key == BerryFlavor.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "BerryFlavorName"}
@@ -810,7 +824,7 @@ class BerryFlavorName(TextEntry):
 ###################################
 class PokedexDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Pokedex"] = relationship(back_populates="descriptions",
+    object_ref: Mapped["Pokedex"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="PokedexDescription.object_key == Pokedex.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokedexDescription"}
@@ -821,7 +835,7 @@ class PokedexDescription(TextEntry):
 
 class PokedexName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Pokedex"] = relationship(back_populates="names",
+    object_ref: Mapped["Pokedex"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="PokedexName.object_key == Pokedex.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokedexName"}
@@ -832,7 +846,7 @@ class PokedexName(TextEntry):
 
 class VersionName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Version"] = relationship(back_populates="names",
+    object_ref: Mapped["Version"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="VersionName.object_key == Version.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "VersionName"}
@@ -843,7 +857,7 @@ class VersionName(TextEntry):
 
 class GenerationName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["Generation"] = relationship(back_populates="names",
+    object_ref: Mapped["Generation"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="GenerationName.object_key == Generation.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "GenerationName"}

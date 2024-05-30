@@ -3,7 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Float, Computed, UniqueConstraint, Index, Boolean
 from sqlalchemy import Table, Column, ForeignKey
 
-from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, get_next_id
+from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, get_next_id, PokeApiResource
 
 if TYPE_CHECKING:
     from Contests import ContestType, ContestEffect, SuperContestEffect, ContestChain, SuperContestChain
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from TextEntries import MoveAilmentName, MoveBattleStyleName, MoveCategoryDescription
     from TextEntries import MoveLearnMethodName, MoveLearnMethodDescription, MoveTargetDescription, MoveTargetName
 
-class Move(Base):
+class Move(Base, PokeApiResource):
     __tablename__ = "Move"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -53,34 +53,34 @@ class Move(Base):
                                                                 primaryjoin="Move.id == foreign(ContestChain.move_key)")
     super_contest_combos: Mapped[List["SuperContestChain"]] = relationship(back_populates="move",
                                                                 primaryjoin="Move.id == foreign(SuperContestChain.move_key)")
-    contest_type: Mapped["ContestType"] = relationship(back_populates="moves",
+    contest_type: Mapped["ContestType"] = relationship(back_populates="moves", cascade="save-update",
                                                        primaryjoin="Move.contest_type_key == ContestType.id",
                                                        foreign_keys=contest_type_key)
-    contest_effect: Mapped["ContestEffect"] = relationship(back_populates="moves",
+    contest_effect: Mapped["ContestEffect"] = relationship(back_populates="moves", cascade="save-update",
                                                            primaryjoin="Move.contest_effect_key == ContestEffect.id",
                                                            foreign_keys=contest_effect_key)
-    super_contest_effect: Mapped["SuperContestEffect"] = relationship(back_populates="moves",
+    super_contest_effect: Mapped["SuperContestEffect"] = relationship(back_populates="moves", cascade="save-update",
                                                            primaryjoin="Move.super_contest_effect_key == SuperContestEffect.id",
                                                            foreign_keys=super_contest_effect_key)
 
-    damage_class: Mapped["DamageClass"] = relationship(back_populates="moves",
+    damage_class: Mapped["DamageClass"] = relationship(back_populates="moves", cascade="save-update",
                                                        primaryjoin="Move.damage_class_key == DamageClass.id",
                                                        foreign_keys=damage_class_key)
 
     learned_by_pokemon: Mapped[List["PokemonMove"]] = relationship(back_populates="move",
                                             primaryjoin="Move.id == foreign(PokemonMove.move_key)")
     
-    generation: Mapped["Generation"] = relationship(back_populates="moves",
+    generation: Mapped["Generation"] = relationship(back_populates="moves", cascade="save-update",
                                                     primaryjoin="Move.generation_key == Generation.id",
                                                     foreign_keys=generation_key)
-    ailment: Mapped["MoveAilment"] = relationship(back_populates="moves",
+    ailment: Mapped["MoveAilment"] = relationship(back_populates="moves", cascade="save-update",
                                                   primaryjoin="Move.ailment_key == MoveAilment.id",
                                                   foreign_keys=ailment_key)
-    category: Mapped["MoveCategory"] = relationship(back_populates="moves",
+    category: Mapped["MoveCategory"] = relationship(back_populates="moves", cascade="save-update",
                                                   primaryjoin="Move.category_key == MoveCategory.id",
                                                   foreign_keys=category_key)
 
-    machines: Mapped[List["Machine"]] = relationship(back_populates="move",
+    machines: Mapped[List["Machine"]] = relationship(back_populates="move", cascade="save-update",
                                                      primaryjoin="Move.id == foreign(Machine.move_key)")
     past_values: Mapped[List["PastMoveStatValues"]] = relationship(back_populates="move",
                                                                    primaryjoin="Move.id == foreign(PastMoveStatValues.move_key)")
@@ -89,20 +89,20 @@ class Move(Base):
     target: Mapped["MoveTarget"] = relationship(back_populates="moves",
                                                 primaryjoin="Move.target_key == MoveTarget.id",
                                                 foreign_keys=target_key)
-    move_type: Mapped["PokemonType"] = relationship(back_populates="moves",
+    move_type: Mapped["PokemonType"] = relationship(back_populates="moves", cascade="save-update",
                                                     primaryjoin="Move.move_type_key == PokemonType.id",
                                                     foreign_keys=move_type_key)
     
     known_move_evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="known_move",
                                                                                  primaryjoin="Move.id == foreign(EvolutionDetail.known_move_key)")
 
-    effect_entries: Mapped[List["MoveEffect"]] = relationship(back_populates="object_ref",
+    effect_entries: Mapped[List["MoveEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveEffect.object_key)")
-    effect_changes: Mapped[List["MoveEffectChange"]] = relationship(back_populates="object_ref",
+    effect_changes: Mapped[List["MoveEffectChange"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveEffectChange.object_key)")
-    flavor_text_entries: Mapped[List["MoveFlavorText"]] = relationship(back_populates="object_ref",
+    flavor_text_entries: Mapped[List["MoveFlavorText"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveFlavorText.object_key)")
-    names: Mapped[List["MoveName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["MoveName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveName.object_key)")
 
 class MoveStatChange(Base):
@@ -112,10 +112,10 @@ class MoveStatChange(Base):
     stat_key: Mapped[int] = mapped_column(Integer)
     move_key: Mapped[int] = mapped_column(Integer)
     
-    stat: Mapped["PokemonStat"] = relationship(back_populates="changing_moves",
+    stat: Mapped["PokemonStat"] = relationship(back_populates="changing_moves", cascade="save-update",
                                                primaryjoin="MoveStatChange.stat_key == PokemonStat.id",
                                                foreign_keys=stat_key)
-    move: Mapped["Move"] = relationship(back_populates="stat_changes",
+    move: Mapped["Move"] = relationship(back_populates="stat_changes", cascade="save-update",
                                         primaryjoin="MoveStatChange.move_key == Move.id",
                                         foreign_keys=move_key)
 
@@ -131,14 +131,14 @@ class PastMoveStatValues(Base):
     move_type_key: Mapped[int] = mapped_column(Integer)
     version_group_key: Mapped[int] = mapped_column(Integer)
 
-    move: Mapped["Move"] = relationship(back_populates="past_values",
+    move: Mapped["Move"] = relationship(back_populates="past_values", cascade="save-update",
                                         primaryjoin="PastMoveStatValues.move_key == Move.id",
                                         foreign_keys=move_key)
     move_type: Mapped["PokemonType"] = relationship(primaryjoin="PastMoveStatValues.move_type_key == PokemonType.id",
                                                     foreign_keys=move_type_key)
     version_group: Mapped["VersionGroup"] = relationship(primaryjoin="PastMoveStatValues.version_group_key == VersionGroup.id",
                                                          foreign_keys=version_group_key)
-    effect_entries: Mapped[List["PastMoveEffect"]] = relationship(back_populates="object_ref",
+    effect_entries: Mapped[List["PastMoveEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="PastMoveStatValues.id == foreign(PastMoveEffect.object_key)")
 
 class MoveAilment(Base):
@@ -146,12 +146,12 @@ class MoveAilment(Base):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    moves: Mapped[List["Move"]] = relationship(back_populates="ailment",
+    moves: Mapped[List["Move"]] = relationship(back_populates="ailment", cascade="save-update",
                                                primaryjoin="MoveAilment.id == foreign(Move.ailment_key)")
-    names: Mapped[List["MoveAilmentName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["MoveAilmentName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveAilment.id == foreign(MoveAilmentName.object_key)")
 
-class MoveBattleStyle(Base):
+class MoveBattleStyle(Base, PokeApiResource):
     __tablename__ = "MoveBattleStyle"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -159,7 +159,7 @@ class MoveBattleStyle(Base):
     preference: Mapped[List["MoveBattleStylePreference"]] = relationship(back_populates="move_battle_style",
                                             primaryjoin="MoveBattleStyle.id == foreign(MoveBattleStylePreference.move_battle_style_key)")
 
-    names: Mapped[List["MoveBattleStyleName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["MoveBattleStyleName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveBattleStyle.id == foreign(MoveBattleStyleName.object_key)")
     
     _cache: Dict[int, "MoveBattleStyle"] = {}
@@ -191,33 +191,57 @@ class MoveCategory(Base):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    moves: Mapped[List["Move"]] = relationship(back_populates="category",
+    moves: Mapped[List["Move"]] = relationship(back_populates="category", cascade="save-update",
                                                primaryjoin="MoveCategory.id == foreign(Move.category_key)")
-    descriptions: Mapped[List["MoveCategoryDescription"]] = relationship(back_populates="object_ref",
+    descriptions: Mapped[List["MoveCategoryDescription"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveCategory.id == foreign(MoveCategoryDescription.object_key)")
 
-class DamageClass(Base): 
+class DamageClass(Base, PokeApiResource):
     __tablename__ = "DamageClass"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    types: Mapped[List["PokemonType"]] = relationship(back_populates="damage_class",
+    types: Mapped[List["PokemonType"]] = relationship(back_populates="damage_class", cascade="save-update",
                                                       primaryjoin="DamageClass.id == foreign(PokemonType.damage_class_key)")
-    moves: Mapped[List["Move"]] = relationship(back_populates="damage_class",
+    moves: Mapped[List["Move"]] = relationship(back_populates="damage_class", cascade="save-update",
                                                primaryjoin="DamageClass.id == foreign(Move.damage_class_key)")
-    descriptions: Mapped[List["DamageClassDescription"]] = relationship(back_populates="object_ref",
+    descriptions: Mapped[List["DamageClassDescription"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="DamageClass.id == foreign(DamageClassDescription.object_key)")
-    names: Mapped[List["DamageClassName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["DamageClassName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="DamageClass.id == foreign(DamageClassName.object_key)")
+    
+    _cache: Dict[int, "DamageClass"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_DamageClass_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "DamageClass":
+        poke_api_id = data.id_
+        name = data.name
+
+        dc = cls(poke_api_id=poke_api_id, name=name)
+        cls._cache[dc.poke_api_id] = dc
+        return dc
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
 
 class MoveLearnMethod(Base): 
     __tablename__ = "MoveLearnMethod"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    descriptions: Mapped[List["MoveLearnMethodDescription"]] = relationship(back_populates="object_ref",
+    descriptions: Mapped[List["MoveLearnMethodDescription"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveLearnMethod.id == foreign(MoveLearnMethodDescription.object_key)")
-    names: Mapped[List["MoveLearnMethodName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["MoveLearnMethodName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveLearnMethod.id == foreign(MoveLearnMethodName.object_key)")
     
     version_groups: Mapped[List["VersionGroup"]] = relationship(back_populates="move_learn_methods", secondary=MoveLearnMethodToVersionGroupLink)
@@ -230,12 +254,12 @@ class MoveTarget(Base):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    moves: Mapped[List["Move"]] = relationship(back_populates="target",
+    moves: Mapped[List["Move"]] = relationship(back_populates="target", cascade="save-update",
                                                primaryjoin="MoveTarget.id == foreign(Move.target_key)")
     
-    descriptions: Mapped[List["MoveTargetDescription"]] = relationship(back_populates="object_ref",
+    descriptions: Mapped[List["MoveTargetDescription"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveTarget.id == foreign(MoveTargetDescription.object_key)")
-    names: Mapped[List["MoveTargetName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["MoveTargetName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                   primaryjoin="MoveTarget.id == foreign(MoveTargetName.object_key)")
 
 class Machine(Base):
@@ -245,12 +269,12 @@ class Machine(Base):
     move_key: Mapped[int] = mapped_column(Integer)
     version_group_key: Mapped[int] = mapped_column(Integer)
 
-    item: Mapped["Item"] = relationship(back_populates="machines",
+    item: Mapped["Item"] = relationship(back_populates="machines", cascade="save-update",
                                         primaryjoin="Machine.item_key == Item.id",
                                         foreign_keys=item_key)
-    move: Mapped["Move"] = relationship(back_populates="machines",
+    move: Mapped["Move"] = relationship(back_populates="machines", cascade="save-update",
                                         primaryjoin="Machine.move_key == Move.id",
                                         foreign_keys=move_key)
-    version_group: Mapped["VersionGroup"] = relationship(back_populates="machines",
+    version_group: Mapped["VersionGroup"] = relationship(back_populates="machines", cascade="save-update",
                                                          primaryjoin="Machine.version_group_key == VersionGroup.id",
                                                          foreign_keys=version_group_key)

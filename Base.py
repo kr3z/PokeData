@@ -32,6 +32,7 @@ sqlalchemy_url = URL.create(
 
 utf8mb4_1000 = String(1000).with_variant(mysql.VARCHAR(1000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_200 = String(200).with_variant(mysql.VARCHAR(200,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
+utf8mb4_50 = String(50).with_variant(mysql.VARCHAR(50,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 
 TinyInteger = SmallInteger().with_variant(mysql.TINYINT, 'mysql','mariadb')
 MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb')
@@ -47,7 +48,7 @@ def connect(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("SET sql_mode = 'TRADITIONAL,NO_ENGINE_SUBSTITUTION'")
 
-Session = sessionmaker(engine)
+Session = sessionmaker(engine, autoflush=False, expire_on_commit=False)
 
 id_seq = Sequence("id_seq",metadata=Base.metadata, start=1, increment=1000, cache=10)
 
@@ -125,3 +126,6 @@ class PokeApiResource:
                 if cache_object:
                     cls._cache[cache_object.poke_api_id] = cache_object
         return cls._cache.get(cache_key), needs_update
+    
+    def recache(self):
+        self.__class__._cache[self.poke_api_id] = self

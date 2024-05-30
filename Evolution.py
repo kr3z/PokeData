@@ -19,11 +19,11 @@ class EvolutionChain(Base, PokeApiResource):
 
     baby_trigger_item: Mapped["Item"] = relationship(#back_populates="baby_trigger_for",
                                                      primaryjoin="EvolutionChain.baby_trigger_item_key == Item.id",
-                                                     foreign_keys=baby_trigger_item_key)
+                                                     foreign_keys=baby_trigger_item_key, cascade="save-update")
     
-    chain: Mapped["ChainLink"] = relationship(back_populates="evolution_chain",
+    chain: Mapped["ChainLink"] = relationship(#back_populates="evolution_chain",
                                               primaryjoin="EvolutionChain.chain_key == ChainLink.id",
-                                              foreign_keys=chain_key)
+                                              foreign_keys=chain_key, cascade="save-update")
     
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_EvolutionChain_PokeApiId"),
@@ -52,16 +52,16 @@ class ChainLink(Base):
     species_key: Mapped[int] = mapped_column(Integer)
     evolves_from_key: Mapped[Optional[int]] = mapped_column(Integer)
     #chain: Mapped["ChainLink"] = relationship
-    evolves_from: Mapped["ChainLink"] = relationship(back_populates="evolves_to", remote_side=id,
+    evolves_from: Mapped["ChainLink"] = relationship(back_populates="evolves_to", remote_side=id, cascade="save-update",
                                                           primaryjoin="ChainLink.evolves_from_key == ChainLink.id",
                                                           foreign_keys=evolves_from_key)
-    evolves_to: Mapped[List["ChainLink"]] = relationship(back_populates="evolves_from",
+    evolves_to: Mapped[List["ChainLink"]] = relationship(back_populates="evolves_from", cascade="save-update",
                                                               primaryjoin="ChainLink.id == foreign(ChainLink.evolves_from_key)")
-    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="chain_link",
-                                                                      primaryjoin="ChainLink.id == foreign(EvolutionDetail.evolution_chain_key)")
+    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="chain_link", cascade="save-update",
+                                                                      primaryjoin="ChainLink.id == foreign(EvolutionDetail.chain_link_key)")
     species: Mapped["PokemonSpecies"] = relationship(#back_populates="evolution_chain",
                                                      primaryjoin="ChainLink.species_key == PokemonSpecies.id",
-                                                     foreign_keys=species_key)
+                                                     foreign_keys=species_key, cascade="save-update")
 
     __table_args__ = (
         UniqueConstraint("species_key",name="ux_ChainLink_SpeciesKey"),
@@ -107,37 +107,37 @@ class EvolutionDetail(Base):
     trade_species_key: Mapped[Optional[int]] = mapped_column(Integer)
     turn_upside_down: Mapped[bool] = mapped_column(Boolean)
 
-    chain_link: Mapped["ChainLink"] = relationship(back_populates="evolution_details",
-                                                             primaryjoin="EvolutionDetail.evolution_chain_key == ChainLink.id",
+    chain_link: Mapped["ChainLink"] = relationship(back_populates="evolution_details", cascade="save-update",
+                                                             primaryjoin="EvolutionDetail.chain_link_key == ChainLink.id",
                                                              foreign_keys=chain_link_key)
-    pokemon: Mapped["Pokemon"] = relationship(back_populates="evolution_details",
+    pokemon: Mapped["Pokemon"] = relationship(back_populates="evolution_details", cascade="save-update",
                                               primaryjoin="EvolutionDetail.pokemon_key == Pokemon.id",
                                               foreign_keys=pokemon_key)
-    trigger: Mapped["EvolutionTrigger"] = relationship(back_populates="evolution_details",
+    trigger: Mapped["EvolutionTrigger"] = relationship(back_populates="evolution_details", cascade="save-update",
                                                        primaryjoin="EvolutionDetail.trigger_key == EvolutionTrigger.id",
                                                        foreign_keys=trigger_key)
-    item: Mapped["Item"] = relationship(back_populates="evolution_details",
+    item: Mapped["Item"] = relationship(back_populates="evolution_details", cascade="save-update",
                                         primaryjoin="EvolutionDetail.item_key == Item.id",
                                         foreign_keys=item_key)
-    held_item: Mapped["Item"] = relationship(back_populates="held_evolution_details",
+    held_item: Mapped["Item"] = relationship(back_populates="held_evolution_details", cascade="save-update",
                                         primaryjoin="EvolutionDetail.held_item_key == Item.id",
                                         foreign_keys=held_item_key)
-    known_move: Mapped["Move"] = relationship(back_populates="known_move_evolution_details",
+    known_move: Mapped["Move"] = relationship(back_populates="known_move_evolution_details", cascade="save-update",
                                               primaryjoin="EvolutionDetail.known_move_key == Move.id",
                                               foreign_keys=known_move_key)
-    known_move_type: Mapped["PokemonType"] = relationship(back_populates="move_type_evolution_details",
+    known_move_type: Mapped["PokemonType"] = relationship(back_populates="move_type_evolution_details", cascade="save-update",
                                                           primaryjoin="EvolutionDetail.known_move_type_key == PokemonType.id",
                                                           foreign_keys=known_move_type_key)
-    location: Mapped["Location"] = relationship(back_populates="evolution_details",
+    location: Mapped["Location"] = relationship(back_populates="evolution_details", cascade="save-update",
                                                 primaryjoin="EvolutionDetail.location_key == Location.id",
                                                 foreign_keys=location_key)
-    party_species: Mapped["PokemonSpecies"] = relationship(back_populates="party_evolution_details",
+    party_species: Mapped["PokemonSpecies"] = relationship(back_populates="party_evolution_details", cascade="save-update",
                                                            primaryjoin="EvolutionDetail.party_species_key == PokemonSpecies.id",
                                                            foreign_keys=party_species_key)
-    party_type: Mapped["PokemonType"] = relationship(back_populates="party_evolution_details",
+    party_type: Mapped["PokemonType"] = relationship(back_populates="party_evolution_details", cascade="save-update",
                                                            primaryjoin="EvolutionDetail.party_type_key == PokemonType.id",
                                                            foreign_keys=party_type_key)
-    trade_species: Mapped["PokemonSpecies"] = relationship(back_populates="trade_evolution_details",
+    trade_species: Mapped["PokemonSpecies"] = relationship(back_populates="trade_evolution_details", cascade="save-update",
                                                            primaryjoin="EvolutionDetail.trade_species_key == PokemonSpecies.id",
                                                            foreign_keys=trade_species_key)
     
@@ -154,7 +154,7 @@ class EvolutionDetail(Base):
         turn_upside_down = details_data.turn_upside_down
         details = cls(gender=gender, min_level=min_level, min_happiness=min_happiness, min_beauty=min_beauty, min_affection=min_affection,
                       needs_overworld_rain=needs_overworld_rain, relative_physical_stats=relative_physical_stats, time_of_day=time_of_day,
-                      turn_upside_down=turn_upside_down, details=details)
+                      turn_upside_down=turn_upside_down)
         
         # cache?
         return details
@@ -199,11 +199,17 @@ class EvolutionTrigger(Base, PokeApiResource):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
 
-    names: Mapped[List["EvolutionTriggerName"]] = relationship(back_populates="object_ref",
+    names: Mapped[List["EvolutionTriggerName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                primaryjoin="EvolutionTrigger.id == foreign(EvolutionTriggerName.object_key)")
-    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="trigger",
+    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="trigger", cascade="save-update",
                                                                    primaryjoin="EvolutionTrigger.id == foreign(EvolutionDetail.trigger_key)")
     
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_EvolutionTrigger_PokeApiId"),
+    )
+
+    _cache: Dict[int, "EvolutionTrigger"] = {}
+
     @classmethod
     def parse_data(cls, data) -> "EvolutionTrigger":
         poke_api_id = data.id
