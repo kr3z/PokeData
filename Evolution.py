@@ -17,7 +17,7 @@ class EvolutionChain(Base, PokeApiResource):
     baby_trigger_item_key: Mapped[Optional[int]] = mapped_column(Integer)
     chain_key: Mapped[int] = mapped_column(Integer)
 
-    baby_trigger_item: Mapped["Item"] = relationship(#back_populates="baby_trigger_for",
+    baby_trigger_item: Mapped["Item"] = relationship(back_populates="baby_trigger_for",
                                                      primaryjoin="EvolutionChain.baby_trigger_item_key == Item.id",
                                                      foreign_keys=baby_trigger_item_key, cascade="save-update")
     

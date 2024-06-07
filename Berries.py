@@ -17,7 +17,7 @@ class Berry(Base, PokeApiResource):
     growth_time: Mapped[int] = mapped_column(TinyInteger)
     max_harvest: Mapped[int] = mapped_column(TinyInteger)
     natural_gift_power: Mapped[int] = mapped_column(TinyInteger)
-    size: Mapped[int] = mapped_column(TinyInteger)
+    size: Mapped[int] = mapped_column(SmallInteger)
     smoothness: Mapped[int] = mapped_column(TinyInteger)
     soil_dryness: Mapped[int] = mapped_column(TinyInteger)
     firmness_key: Mapped[int] = mapped_column(Integer)
@@ -27,13 +27,13 @@ class Berry(Base, PokeApiResource):
     firmness: Mapped["BerryFirmness"] = relationship(back_populates="berries", cascade="save-update",
                                                      primaryjoin="Berry.firmness_key == BerryFirmness.id",
                                                      foreign_keys=firmness_key)
-    item: Mapped["Item"] = relationship(#back_populates="berry",
+    item: Mapped["Item"] = relationship(back_populates="berry", cascade="save-update",
                                         primaryjoin="Berry.item_key == Item.id",
                                         foreign_keys=item_key)
     natural_gift_type: Mapped["PokemonType"] = relationship(primaryjoin="Berry.natural_gift_type_key == PokemonType.id",
-                                                            foreign_keys=natural_gift_type_key)
+                                                            foreign_keys=natural_gift_type_key, cascade="save-update",)
 
-    flavors: Mapped[List["BerryFlavorLink"]] = relationship(back_populates="berry",
+    flavors: Mapped[List["BerryFlavorLink"]] = relationship(back_populates="berry", cascade="save-update",
                                                             primaryjoin="Berry.id == foreign(BerryFlavorLink.berry_key)")
     
     _cache: Dict[int, "Berry"] = {}

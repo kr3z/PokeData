@@ -520,8 +520,8 @@ class PokemonHeldItem(Base):
                                             foreign_keys=pokemon_key)
 
     @classmethod
-    def parse_data(cls,data) -> "PokemonHeldItem":
-        rarity = data.rarity
+    def parse_data(cls,rarity) -> "PokemonHeldItem":
+        rarity = rarity
         held_item = cls(rarity=rarity)
 
         return held_item
@@ -530,9 +530,9 @@ class PokemonHeldItem(Base):
         self.id = get_next_id()
         self.rarity = rarity
 
-    def compare(self, data):
-        if self.rarity != data.rarity:
-            self.rarity = data.rarity
+    def compare(self, rarity):
+        if self.rarity != rarity:
+            self.rarity = rarity
 
 class PokemonMove(Base):
     __tablename__ = "PokemonMove"

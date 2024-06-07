@@ -604,7 +604,7 @@ class ItemFlavorText(VersionGroupTextEntry):
     text_entry_name = "text"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.flavor_text
+        self.text_entry = data.text
 
 class ItemEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -641,7 +641,7 @@ class ItemAttributeName(TextEntry):
 
 class ItemAttributeDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["ItemAttribute"] = relationship(back_populates="names", cascade="save-update",
+    object_ref: Mapped["ItemAttribute"] = relationship(back_populates="descriptions", cascade="save-update",
                                             primaryjoin="ItemAttributeDescription.object_key == ItemAttribute.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ItemAttributeDescription"}
@@ -661,7 +661,7 @@ class ItemCategoryName(TextEntry):
         super().__init__(data)
         self.text_entry = data.name
 
-class ItemFlingEffectEffect(VerboseEffect):
+class ItemFlingEffectEffect(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="effect_entries", cascade="save-update",
                                             primaryjoin="ItemFlingEffectEffect.object_key == ItemFlingEffect.id",
@@ -672,7 +672,7 @@ class ItemFlingEffectEffect(VerboseEffect):
         super().__init__(data)
         self.text_entry = data.effect
 
-class ItemFlingEffectName(TextEntry):
+""" class ItemFlingEffectName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="names", cascade="save-update",
                                             primaryjoin="ItemFlingEffectName.object_key == ItemFlingEffect.id",
@@ -681,7 +681,7 @@ class ItemFlingEffectName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data.name """
 
 class ItemPocketName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)

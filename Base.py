@@ -35,7 +35,7 @@ utf8mb4_200 = String(200).with_variant(mysql.VARCHAR(200,collation='utf8mb4_unic
 utf8mb4_50 = String(50).with_variant(mysql.VARCHAR(50,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 
 TinyInteger = SmallInteger().with_variant(mysql.TINYINT, 'mysql','mariadb')
-MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb')
+MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb') 
 
 class Base(DeclarativeBase):
     pass

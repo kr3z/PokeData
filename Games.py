@@ -1,8 +1,8 @@
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, Table, Column, ForeignKey
+from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, Table, Column, ForeignKey, SmallInteger
 
-from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, RegionToVersionGroupLink, PokedexToVersionGroupLink, PokeApiResource, get_next_id
+from Base import Base, MoveLearnMethodToVersionGroupLink, RegionToVersionGroupLink, PokedexToVersionGroupLink, PokeApiResource, get_next_id
 
 if TYPE_CHECKING:
     from TextEntries import PokedexDescription, PokedexName, GenerationName, VersionName
@@ -215,7 +215,7 @@ class VersionGroup(Base, PokeApiResource):
 class GameIndex(Base):
     __tablename__ = "GameIndex"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    game_index: Mapped[int] = mapped_column(TinyInteger)
+    game_index: Mapped[int] = mapped_column(SmallInteger)
     type: Mapped[str] = mapped_column(String(30))
 
     __mapper_args__ = {
@@ -231,7 +231,7 @@ class GameIndex(Base):
 class GenerationGameIndex(GameIndex):
     generation_key: Mapped[int] = mapped_column(Integer, nullable=True)
     generation: Mapped["Generation"] = relationship(primaryjoin="GenerationGameIndex.generation_key == Generation.id",
-                                                    foreign_keys=generation_key)
+                                                    foreign_keys=generation_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
 
     def __init__(self, game_index: int):
@@ -240,7 +240,7 @@ class GenerationGameIndex(GameIndex):
 class VersionGameIndex(GameIndex):
     version_key: Mapped[int] = mapped_column(Integer, nullable=True)
     version: Mapped["Version"] = relationship(primaryjoin="VersionGameIndex.version_key == Version.id",
-                                              foreign_keys=version_key)
+                                              foreign_keys=version_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
 
     def __init__(self, game_index: int):

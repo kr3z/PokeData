@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from Pokemon import Pokemon, PokemonSpecies
     from TextEntries import LocationName, LocationAreaName, PalParkAreaName
 
-class Location(Base):
+class Location(Base, PokeApiResource):
     __tablename__ = "Location"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     region_key: Mapped[int] = mapped_column(Integer)
@@ -28,8 +28,32 @@ class Location(Base):
                                                        primaryjoin="Location.id == foreign(LocationArea.location_key)")
     evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="location",
                                                                       primaryjoin="Location.id == foreign(EvolutionDetail.location_key)")
+    
+    _cache: Dict[int, "Location"] = {}
 
-class LocationArea(Base):
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_Location_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "Location":
+        poke_api_id = data.id_
+        name = data.name
+
+        location = cls(poke_api_id=poke_api_id, name=name)
+        cls._cache[location.poke_api_id] = location
+        return location
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
+
+class LocationArea(Base, PokeApiResource):
     __tablename__ = "LocationArea"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -45,6 +69,35 @@ class LocationArea(Base):
                                                                         primaryjoin="LocationArea.id == foreign(PokemonEncounter.location_area_key)")
     names: Mapped[List["LocationAreaName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                            primaryjoin="LocationArea.id == foreign(LocationAreaName.object_key)")
+    
+    _cache: Dict[int, "LocationArea"] = {}
+
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_LocationArea_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "LocationArea":
+        poke_api_id = data.id_
+        name = data.name
+        game_index = data.game_index
+
+        area = cls(poke_api_id=poke_api_id, name=name, game_index=game_index)
+        cls._cache[area.poke_api_id] = area
+        return area
+    
+    def __init__(self, poke_api_id: int, name: str, game_index: int):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+        self.game_index = game_index
+
+    def compare(self, data):
+        if self.name != data.name:
+            self.name = data.name
+        if self.game_index != data.game_index:
+            self.game_index = data.game_index
+            
 
 class EncounterMethodRate(Base):
     __tablename__ = "EncounterMethodRate"
@@ -61,6 +114,25 @@ class EncounterMethodRate(Base):
                                                                foreign_keys=encounter_method_key)
     version: Mapped["Version"] = relationship(primaryjoin="EncounterMethodRate.version_key == Version.id",
                                               foreign_keys=version_key)
+    
+    __table_args__ = (
+        UniqueConstraint("location_area_key","encounter_method_key","version_key",name="ux_EncounterMethodRate_area_method_version"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "EncounterMethodRate":
+        rate = data.rate
+        encounter = cls(rate = rate)
+        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
+        return encounter
+    
+    def __init__(self, rate: int):
+        self.id = get_next_id()
+        self.rate = rate
+
+    def compare(self, data):
+        if self.rate != data.rate:
+            self.rate = data.rate
 
 class PokemonEncounter(Base):
     __tablename__ = "PokemonEncounter"
@@ -80,6 +152,26 @@ class PokemonEncounter(Base):
     location_area: Mapped["LocationArea"] = relationship(back_populates="pokemon_encounters",
                                                          primaryjoin="PokemonEncounter.location_area_key == LocationArea.id",
                                                          foreign_keys=location_area_key)
+    
+    __table_args__ = (
+        UniqueConstraint("pokemon_key","version_key","location_area_key",name="ux_PokemonEncounter_pokemon_version_area"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "PokemonEncounter":
+        max_chance = data.max_chance
+        encounter = cls(max_chance = max_chance)
+        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
+        return encounter
+    
+    def __init__(self, max_chance: int):
+        self.id = get_next_id()
+        self.max_chance = max_chance
+
+    def compare(self, data):
+        if self.max_chance != data.max_chance:
+            self.max_chance = data.max_chance
+
 
 class PalParkArea(Base, PokeApiResource):
     __tablename__ = "PalParkArea"

@@ -8,16 +8,16 @@ import pokebase
 from pokebase.interface import APIResource
 
 from Base import Session, PokeApiResource
-from Berries import Berry, BerryFlavor
+from Berries import Berry, BerryFlavor, BerryFlavorLink, BerryFirmness
 from Contests import ContestChain, ContestType
 from Evolution import EvolutionChain, ChainLink, EvolutionDetail, EvolutionTrigger
-from Encounters import Encounter
+from Encounters import Encounter, EncounterMethod, EncounterCondition, EncounterConditionValue
 from Games import Generation, GameIndex, GenerationGameIndex, TypeGameIndex, VersionGroup, Pokedex, VersionGameIndex, Version
-from Items import Item
-from Locations import Region, Location, PalParkEncounter, PalParkArea
+from Items import Item, ItemAttribute, ItemCategory, ItemFlingEffect, ItemPocket
+from Locations import Region, Location, PalParkEncounter, PalParkArea, PokemonEncounter, LocationArea, EncounterMethodRate
 from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle, DamageClass
 from Pokemon import Pokemon, PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat, PokemonStat, PokemonNature, MoveBattleStylePreference, PokeathlonStat, PokemonType, PokemonTypeRelation
-from Pokemon import PastTypeLink, PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic
+from Pokemon import PastTypeLink, PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic, PokemonHeldItem
 from TextEntries import Language, TextEntry, VersionTextEntry, VersionGroupTextEntry
 
 logger = logging.getLogger('PokeBase')
@@ -28,10 +28,16 @@ class ProcessingInProgressException(Exception):
 
 POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
     # Berries
+    Berry: pokebase.berry,
     BerryFlavor: pokebase.berry_flavor,
+    BerryFirmness: pokebase.berry_firmness,
     # Contests
     ContestType: pokebase.contest_type,
-    #Evolution
+    # Encounters
+    EncounterMethod: pokebase.encounter_method,
+    EncounterCondition: pokebase.encounter_condition,
+    EncounterConditionValue: pokebase.encounter_condition_value,
+    # Evolution
     EvolutionChain: pokebase.evolution_chain,
     EvolutionTrigger: pokebase.evolution_trigger,
     # Games
@@ -40,7 +46,14 @@ POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
     Version: pokebase.version,
     VersionGroup: pokebase.version_group,
     # Items
+    Item: pokebase.item,
+    ItemAttribute: pokebase.item_attribute,
+    ItemCategory: pokebase.item_category,
+    ItemFlingEffect: pokebase.item_fling_effect,
+    ItemPocket: pokebase.item_pocket,
     # Locations
+    Location: pokebase.location,
+    LocationArea: pokebase.location_area,
     PalParkArea: pokebase.pal_park_area,
     Region: pokebase.region,
     # Moves
@@ -197,6 +210,9 @@ def api_resource(T: Type[PokeApiResource]):
                                         gi_object.version_key = gi_type_object.id
                                     gi_object.object_key = api_object.id
                                     gi_object.object_ref = api_object
+                                    
+                                    gi_object = session.merge(gi_object)
+                                    session.flush()
 
                             if gi_entry_map:
                                 logger.debug("Process GameIndex: Found %s existing GameIndex entries to be deleted for type: %s", len(gi_entry_map), type_name)
@@ -383,6 +399,65 @@ class PokeBaseWrapper:
         return species_data """
 # Berries
 
+    @api_resource(Berry)
+    def process_berry(berry: Berry, berry_data: APIResource, self, id_: int, ignore_404: bool = False) -> Berry:
+
+        firmness_data = berry_data.firmness
+        firmness = self.process_berry_firmness(firmness_data.id_)
+        berry.firmness_key = firmness.id
+        berry.firmness = firmness
+
+        item_data = berry_data.item
+        item = self.process_item(item_data.id_)
+        berry.item_key = item.id
+        berry.item = item
+        
+        type_data = berry_data.natural_gift_type
+        type_ = self.process_type(type_data.id_)
+        berry.natural_gift_type_key = type_.id
+        berry.natural_gift_type = type_
+
+        return berry
+    
+    
+    def process_berry_flavor_link(self, link_data, flavor: BerryFlavor) -> BerryFlavorLink:
+        berry_id = link_data.berry.id_
+
+        processing_key = "BerryFlavorLink:"+str(berry_id)+":"+str(flavor.poke_api_id)
+        if processing_key in self._processing:
+            logger.debug("process_berry_flavor_link: berry flavor link for Berry: %s and BerryFlavor: %s already being processed", berry_id, flavor.poke_api_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            berry = self.process_berry(berry_id)
+            stmt = select(BerryFlavorLink).filter_by(berry_key=berry.id, flavor_key=flavor.id)
+            with Session() as session:
+                link: BerryFlavorLink = session.scalars(stmt).first()
+            if link:
+                link.compare(link_data)
+            else:
+                link = BerryFlavorLink.parse_data(link_data)
+            
+            link.berry = berry
+            link.berry_key = berry.id
+            link.flavor = flavor
+            link.flavor_key = flavor.id
+
+            with Session() as session:
+                link = session.merge(link)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+
+        return link
+    
+    @api_resource(BerryFirmness)
+    def process_berry_firmness(firmness: BerryFirmness, firmness_data: APIResource, self, id_: int, ignore_404: bool = False) -> BerryFirmness:
+
+        return firmness
+
     @api_resource(BerryFlavor)
     def process_berry_flavor(flavor: BerryFlavor, flavor_data: APIResource, self, id_: int, ignore_404: bool = False) -> BerryFlavor:
 
@@ -395,7 +470,8 @@ class PokeBaseWrapper:
         #contest_type.berry_flavor = flavor
         #contest_type.berry_flavor_key = flavor.id
 
-        # Should we process berries here, or handle that with Items
+        for link_data in flavor_data.berries:
+            link = self.process_berry_flavor_link(link_data=link_data, flavor=flavor)
 
         return flavor
     
@@ -415,6 +491,71 @@ class PokeBaseWrapper:
         berry_flavor.contest_type_key = contest_type.id """
 
         return contest_type
+    
+#Encounters
+
+    def process_encounter(self, encounter_data, pokemon_encounter: PokemonEncounter) -> Encounter:
+        method_id = encounter_data.method.id_
+        processing_key = "Encounter:"+str(pokemon_encounter.id) + ":" + str(method_id)
+        if processing_key in self._processing:
+            logger.debug("process_encounter: encounter for PokemonEncouter: %s and method: %s already being processed", pokemon_encounter.id, method_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            method = self.process_encounter_method(method_id)
+            with Session() as session:
+                encounter = session.scalars(select(Encounter).filter_by(pokemon_encounter_key=pokemon_encounter.id, method_key = method.id)).first()
+            if encounter:
+                encounter.compare(encounter_data)
+            else:
+                encounter = Encounter.parse_data(encounter_data)
+
+            if encounter.pokemon_encounter_key != pokemon_encounter.id:
+                encounter.pokemon_encounter_key = pokemon_encounter.id
+                encounter.pokemon_encounter = pokemon_encounter
+            if encounter.method_key != method.id:
+                encounter.method_key = method.id
+                encounter.method = method
+
+            with Session() as session:
+                encounter = session.merge(encounter)
+                existing_value_ids = {value.poke_api_id for value in encounter.condition_values}
+                for value_data in encounter_data.condition_values:
+                    if value_data.id_ not in existing_value_ids:
+                        value = self.process_encounter_condition_value(value_data.id_)
+                        value = session.merge(value)
+                        encounter.condition_values.append(value)
+                session.commit()
+
+            """ with Session() as session:
+                encounter = session.merge(encounter)
+                session.commit() """
+        finally:
+            self._processing.remove(processing_key)
+
+        return encounter
+
+
+    @api_resource(EncounterMethod)
+    def process_encounter_method(method: EncounterMethod, method_data: APIResource, self, id_: int, ignore_404: bool = False) -> EncounterMethod:
+        
+        return method
+    
+    @api_resource(EncounterCondition)
+    def process_encounter_condition(condition: EncounterCondition, condition_data: APIResource, self, id_: int, ignore_404: bool = False) -> EncounterCondition:
+        
+        return condition
+    
+    @api_resource(EncounterConditionValue)
+    def process_encounter_condition_value(value: EncounterConditionValue, value_data: APIResource, self, id_: int, ignore_404: bool = False) -> EncounterConditionValue:
+        condition_data = value_data.condition
+        condition = self.process_encounter_condition(condition_data.id_)
+        value.condition_key = condition.id
+        value.condition = condition
+
+        return value
+
 # Evolution
 
     @api_resource(EvolutionChain)
@@ -687,8 +828,164 @@ class PokeBaseWrapper:
 
         return version_group
     
+# Items
+    @api_resource(Item)
+    def process_item(item: Item, item_data: APIResource, self, id_: int, ignore_404: bool = False) -> Item:
+
+        fling_effect_data = item_data.fling_effect
+        if fling_effect_data:
+            fling_effect = self.process_fling_effect(fling_effect_data.id_)
+            item.fling_effect = fling_effect
+            item.fling_effect_key = fling_effect.id
+
+        
+        category_data = item_data.category
+        category = self.process_item_category(category_data.id_)
+        item.category = category
+        item.category_key = category.id
+
+        # This should be done from the berry side, through berry flavor
+        #berry: Mapped["Berry"] = relationship(#back_populates="item",
+        #                                      primaryjoin="Item.berry_key == Berry.id",
+        #                                      foreign_keys=berry_key, cascade="save-update")
+
+        with Session() as session:
+            item = session.merge(item)
+            existing_attribute_ids = {attribute.poke_api_id for attribute in item.attributes}
+            for attribute_data in item_data.attributes:
+                if attribute_data.id_ not in existing_attribute_ids:
+                    attribute = self.process_item_attribute(attribute_data.id_)
+                    attribute = session.merge(attribute)
+                    item.attributes.append(attribute)
+            session.commit()
+
+        # should be handled in decorator
+        #game_indices: Mapped[List["ItemGameIndex"]] = relationship(back_populates="object_ref", cascade="save-update",
+        #                                                           primaryjoin="Item.id == foreign(ItemGameIndex.object_key)")
+        
+        # Populate from the Machine side, through Move
+        #machines: Mapped[List["Machine"]] = relationship(back_populates="item", cascade="save-update",
+        #                                                 primaryjoin="Item.id == foreign(Machine.item_key)")
     
+    
+        return item
+    
+    @api_resource(ItemAttribute)
+    def process_item_attribute(attribute: ItemAttribute, attribute_data: APIResource, self, id_: int, ignore_404: bool = False) -> ItemAttribute:
+        return attribute
+    
+    @api_resource(ItemCategory)
+    def process_item_category(category: ItemCategory, category_data: APIResource, self, id_: int, ignore_404: bool = False) -> ItemCategory:
+        pocket_data = category_data.pocket
+        pocket = self.process_item_pocket(pocket_data.id_)
+        category.pocket_key = pocket.id
+        category.pocket = pocket
+
+        return category
+    
+    @api_resource(ItemFlingEffect)
+    def process_fling_effect(fling: ItemFlingEffect, fling_data: APIResource, self, id_: int, ignore_404: bool = False) -> ItemFlingEffect:
+        return fling
+    
+    @api_resource(ItemPocket)
+    def process_item_pocket(pocket: ItemPocket, pocket_data: APIResource, self, id_: int, ignore_404: bool = False) -> ItemPocket:
+        return pocket
+
 # Locations
+    @api_resource(Location)
+    def process_location(location: Location, location_data: APIResource, self, id_: int, ignore_404: bool = False) -> Location:
+        region_data = location_data.region
+        region = self.process_region(region_data.id_)
+        location.region_key = region.id
+        location.region = region
+
+        return location
+    
+    @api_resource(LocationArea)
+    def process_location_area(area: LocationArea, area_data: APIResource, self, id_: int, ignore_404: bool = False) -> LocationArea:
+        location_data = area_data.location
+        location = self.process_location(location_data.id_)
+        area.location_key = location.id
+        area.location = location
+
+        for rate_data in area_data.encounter_method_rates:
+            method_id = rate_data.encounter_method.id_
+            for version_detail in rate_data.version_details:
+                rate = self.process_encounter_method_rate(version_detail, method_id, area)
+
+        return area
+    
+    def process_encounter_method_rate(self, version_details, method_id: int, area: LocationArea):
+        version_id = version_details.version.id_
+        processing_key = "EncounterMethodRate:"+str(area.poke_api_id) + ":" + str(version_id) + ":" + str(method_id)
+        if processing_key in self._processing:
+            logger.debug("process_encounter_method_rate: EncounterMethodRate for area: %s and version: %s and method: %s already being processed", area.poke_api_id, version_id, method_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            method = self.process_encounter_method(method_id)
+            version = self.process_version(version_id)
+            with Session() as session:
+                rate = session.scalars(select(EncounterMethodRate).filter_by(location_area_key=area.id, version_key=version.id, encounter_method_key=method.id)).first()
+            if rate:
+                rate.compare(version_details)
+            else:
+                rate = EncounterMethodRate.parse_data(version_details)
+
+            rate.encounter_method_key = method.id
+            rate.encounter_method = method
+            rate.version_key = version.id
+            rate.version = version
+            rate.location_area_key = area.id
+            rate.location_area = area
+            
+            with Session() as session:
+                rate = session.merge(rate)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+
+        return rate
+
+    def process_pokemon_encounter(self, version_details, area_id: int, pokemon: Pokemon) -> PokemonEncounter:
+        version_id = version_details.version.id_
+        processing_key = "PokemonEncounter:"+str(pokemon.poke_api_id) + ":" + str(version_id) + ":" + str(area_id)
+        if processing_key in self._processing:
+            logger.debug("process_pokemon_encounter: PokemonEncounter for pokemon: %s and version: %s and area: %s already being processed", pokemon.poke_api_id, version_id, area_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            area = self.process_location_area(area_id)
+            version = self.process_version(version_id)
+            with Session() as session:
+                encounter = session.scalars(select(PokemonEncounter).filter_by(pokemon_key=pokemon.id, version_key=version.id, location_area_key=area.id)).first()
+            if encounter:
+                encounter.compare(version_details)
+            else:
+                encounter = PokemonEncounter.parse_data(version_details)
+
+            encounter.pokemon_key = pokemon.id
+            encounter.pokemon = pokemon
+            encounter.version_key = version.id
+            encounter.version = version
+            encounter.location_area_key = area.id
+            encounter.location_area = area
+
+            for details in version_details.encounter_details:
+                self.process_encounter(details, encounter)
+            
+            with Session() as session:
+                encounter = session.merge(encounter)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+
+        return encounter
+    
     @api_resource(PalParkArea)
     def process_pal_park_area(area: PalParkArea, area_data: APIResource, self, id_: int, ignore_404: bool = False) -> PalParkArea:
         return area
@@ -1020,9 +1317,16 @@ class PokeBaseWrapper:
         #game_indices: Mapped[List["PokemonGameIndex"]] = relationship(back_populates="object_ref",
         #                                    primaryjoin="Pokemon.id == foreign(PokemonGameIndex.object_key)")
 
-        # Waiting on implementing these until we can test the parts implemeneted so far  
-        #held_items: Mapped[List["PokemonHeldItem"]] = relationship(back_populates="pokemon",
-        #                                    primaryjoin="Pokemon.id == foreign(PokemonHeldItem.pokemon_key)")
+        for held_item_data in pokemon_data.held_items:
+            item = self.process_item(held_item_data.item.id_)
+            for version_detail in held_item_data.version_details:
+                held_item = self.process_held_item(pokemon=pokemon, item=item, version_detail=version_detail)
+
+        for encounter_data in pokemon_data.location_area_encounters:
+            area_id = encounter_data.location_area.id_
+            for version_detail in encounter_data.version_details:
+                pokemon_encounter = self.process_pokemon_encounter(version_detail, area_id, pokemon)
+
     
         #pokemon_encounters: Mapped[List["PokemonEncounter"]] = relationship(back_populates="pokemon",
         #                                    primaryjoin="Pokemon.id == foreign(PokemonEncounter.pokemon_key)")
@@ -1031,6 +1335,43 @@ class PokeBaseWrapper:
         #                                    primaryjoin="Pokemon.id == foreign(PokemonMove.pokemon_key)")
 
         return pokemon
+    
+    def process_held_item(self, pokemon: Pokemon, item: Item, version_detail):
+        version_id = version_detail.version.id_
+        rarity = version_detail.rarity
+        processing_key = "PokemonHeldItem:"+str(pokemon.poke_api_id)+":"+str(item.poke_api_id)+":"+str(version_id)
+        if processing_key in self._processing:
+            logger.debug("process_held_item: held item for pokemon: %s and item: %s and version: already being processed", pokemon.poke_api_id, item.poke_api_id, version_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            version = self.process_version(version_id)
+            stmt = select(PokemonHeldItem).filter_by(pokemon_key=pokemon.id, item_key=item.id, version_key=version.id)
+            with Session() as session:
+                held_item: PokemonHeldItem = session.scalars(stmt).first()
+            if held_item:
+                held_item.compare(rarity)
+            else:
+                held_item = PokemonHeldItem.parse_data(rarity)
+            
+            held_item.pokemon = pokemon
+            held_item.pokemon_key = pokemon.id
+
+            held_item.item = item
+            held_item.item_key = item.id
+
+            held_item.version = version
+            held_item.version_key = version.id
+
+            with Session() as session:
+                held_item = session.merge(held_item)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+
+        return held_item
     
     @api_resource(PokemonForm)
     def process_pokemon_form(form: PokemonForm, form_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonForm:
