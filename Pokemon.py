@@ -521,7 +521,7 @@ class PokemonHeldItem(Base):
 
     @classmethod
     def parse_data(cls,rarity) -> "PokemonHeldItem":
-        rarity = rarity
+        #rarity = rarity
         held_item = cls(rarity=rarity)
 
         return held_item
@@ -560,6 +560,21 @@ class PokemonMove(Base):
     
     """ affecting_stats: Mapped[List["MoveStatAffect"]] = relationship(back_populates="move",
                                                                    primaryjoin="PokemonMove.id == foreign(MoveStatAffect.move_key)") """
+    
+    @classmethod
+    def parse_data(cls,data) -> "PokemonMove":
+        level_learned_at = data.level_learned_at
+        move = cls(level_learned_at=level_learned_at)
+
+        return move
+    
+    def __init__(self, level_learned_at: int):
+        self.id = get_next_id()
+        self.level_learned_at = level_learned_at
+
+    def compare(self, data):
+        if self.level_learned_at != data.level_learned_at:
+            self.level_learned_at = data.level_learned_at
 
 class PokemonColor(Base, PokeApiResource):
     __tablename__ = "PokemonColor"
@@ -781,7 +796,7 @@ class PokemonSpecies(Base, PokeApiResource):
     varieties: Mapped[List["Pokemon"]] = relationship(back_populates="species", cascade="save-update",
                                                     primaryjoin="PokemonSpecies.id == foreign(Pokemon.species_key)")
 
-    pokedex_entries: Mapped[List["PokedexEntry"]] = relationship(back_populates="pokemon", cascade="save-update",
+    pokedex_entries: Mapped[List["PokedexEntry"]] = relationship(back_populates="pokemon_species", cascade="save-update",
                                                     primaryjoin="PokemonSpecies.id == foreign(PokedexEntry.pokemon_species_key)")
     
     evolves_from_species: Mapped["PokemonSpecies"] = relationship(back_populates="evolves_to_species", remote_side=id, cascade="save-update",

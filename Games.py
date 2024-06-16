@@ -118,9 +118,28 @@ class PokedexEntry(Base):
     pokedex: Mapped["Pokedex"] = relationship(back_populates="entries", cascade="save-update",
                                               primaryjoin="PokedexEntry.pokedex_key == Pokedex.id",
                                               foreign_keys=pokedex_key)
-    pokemon: Mapped["PokemonSpecies"] = relationship(back_populates="pokedex_entries", cascade="save-update",
+    pokemon_species: Mapped["PokemonSpecies"] = relationship(back_populates="pokedex_entries", cascade="save-update",
                                               primaryjoin="PokemonSpecies.id == PokedexEntry.pokemon_species_key",
                                               foreign_keys=pokemon_species_key)
+    
+    __table_args__ = (
+        UniqueConstraint("pokemon_species_key","pokedex_key",name="ux_PokedexEntry_Species_Pokedex"),
+    )
+
+    @classmethod
+    def parse_data(cls,data) -> "PokedexEntry":
+        entry_number = data.entry_number
+        entry = cls(entry_number=entry_number)
+        #cls._cache[pokedex.poke_api_id] = pokedex
+        return entry
+    
+    def __init__(self, entry_number: int):
+        self.id = get_next_id()
+        self.entry_number = entry_number
+
+    def compare(self, data):
+        if self.entry_number != data.entry_number:
+            self.entry_number = data.entry_number
 
 class Version(Base, PokeApiResource):
     __tablename__ = "Version"

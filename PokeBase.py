@@ -9,16 +9,16 @@ from pokebase.interface import APIResource
 
 from Base import Session, PokeApiResource
 from Berries import Berry, BerryFlavor, BerryFlavorLink, BerryFirmness
-from Contests import ContestChain, ContestType
+from Contests import ContestType, ContestEffect, SuperContestEffect
 from Evolution import EvolutionChain, ChainLink, EvolutionDetail, EvolutionTrigger
 from Encounters import Encounter, EncounterMethod, EncounterCondition, EncounterConditionValue
-from Games import Generation, GameIndex, GenerationGameIndex, TypeGameIndex, VersionGroup, Pokedex, VersionGameIndex, Version
+from Games import Generation, GenerationGameIndex, VersionGroup, Pokedex, VersionGameIndex, Version, PokedexEntry
 from Items import Item, ItemAttribute, ItemCategory, ItemFlingEffect, ItemPocket
 from Locations import Region, Location, PalParkEncounter, PalParkArea, PokemonEncounter, LocationArea, EncounterMethodRate
-from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle, DamageClass
+from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle, DamageClass, MoveTarget, MoveCategory, MoveStatChange, PastMoveStatValues, MoveAilment
 from Pokemon import Pokemon, PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat, PokemonStat, PokemonNature, MoveBattleStylePreference, PokeathlonStat, PokemonType, PokemonTypeRelation
-from Pokemon import PastTypeLink, PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic, PokemonHeldItem
-from TextEntries import Language, TextEntry, VersionTextEntry, VersionGroupTextEntry
+from Pokemon import PastTypeLink, PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic, PokemonHeldItem, PokemonMove
+from TextEntries import Language, TextEntry, VersionTextEntry, VersionGroupTextEntry, NestedVersionGroupTextEntry
 
 logger = logging.getLogger('PokeBase')
 REQ_WAIT_TIME = 1000
@@ -33,6 +33,8 @@ POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
     BerryFirmness: pokebase.berry_firmness,
     # Contests
     ContestType: pokebase.contest_type,
+    ContestEffect: pokebase.contest_effect,
+    SuperContestEffect: pokebase.super_contest_effect,
     # Encounters
     EncounterMethod: pokebase.encounter_method,
     EncounterCondition: pokebase.encounter_condition,
@@ -57,8 +59,14 @@ POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
     PalParkArea: pokebase.pal_park_area,
     Region: pokebase.region,
     # Moves
+    Move: pokebase.move,
+    MoveAilment: pokebase.move_ailment,
     MoveBattleStyle: pokebase.move_battle_style,
+    MoveCategory: pokebase.move_category,
     DamageClass: pokebase.move_damage_class,
+    MoveLearnMethod: pokebase.move_learn_method,
+    MoveTarget: pokebase.move_target,
+    Machine: pokebase.machine,
     # Pokemon
     PokemonAbility: pokebase.ability,
     PokemonCharacteristic: pokebase.characteristic,
@@ -67,11 +75,11 @@ POKEBASE_API: Dict[Type[PokeApiResource], Callable] = {
     PokemonNature: pokebase.nature,
     PokeathlonStat: pokebase.pokeathlon_stat,
     Pokemon: pokebase.pokemon,
-    PokemonForm: pokebase.pokemon_form,
-    PokemonSpecies: pokebase.pokemon_species,
     PokemonColor: pokebase.pokemon_color, 
-    PokemonShape: pokebase.pokemon_shape,
+    PokemonForm: pokebase.pokemon_form,
     PokemonHabitat: pokebase.pokemon_habitat,
+    PokemonShape: pokebase.pokemon_shape,
+    PokemonSpecies: pokebase.pokemon_species,
     PokemonStat: pokebase.stat,
     PokemonType: pokebase.type_,
     # TextEntries
@@ -248,71 +256,88 @@ def api_resource(T: Type[PokeApiResource]):
                                 #logger.debug(text_entry_map)
 
                             for text_data in data_attr:
-                                text_key = getattr(text_data, text_class.text_entry_name) + str(text_data.language.id_)
+                                nested_text_entries = [text_data]
                                 version_id_ = None
+                                version = None
+                                vg = None
                                 if issubclass(text_class, VersionTextEntry):
                                     version_id_ = text_data.version.id_
+                                    version = self.process_version(version_id_)
                                 if issubclass(text_class, VersionGroupTextEntry):
                                     version_id_ = text_data.version_group.id_
-                                if version_id_:
-                                    text_key = text_key + ":" + str(version_id_)
-                                #logger.debug("Process %s: Checking for existing text_key: %s", type_name, text_key)
-                                text_entry = text_entry_map.pop(text_key, None)
-                                #logger.debug("text_entry: %s", text_entry)
+                                    vg = self.process_version_group(version_id_)
+                                if issubclass(text_class, NestedVersionGroupTextEntry):
+                                    nested_text_entries = getattr(text_data,text_class.nested_entry_name)
 
-                                if not text_entry:
-                                    logger.debug("Process %s: Parsing new TextEntry: %s", type_name, text_key)
-                                    
-                                    object_text: TextEntry = text_class(text_data)
-                                    object_text.object_key = api_object.id
-                                    object_text.object_ref = api_object
+                                logger.debug("Process %s: processing %s nested_text_entries for text_relationship: %s", type_name, len(nested_text_entries), text_relationship_name)
+                                for nested_text_data in nested_text_entries:
+                                    text_key = getattr(nested_text_data, text_class.text_entry_name) + str(nested_text_data.language.id_)
+                                    if version_id_:
+                                        text_key = text_key + ":" + str(version_id_)
+                                    #logger.debug("Process %s: Checking for existing text_key: %s", type_name, text_key)
+                                    text_entry = text_entry_map.pop(text_key, None)
+                                    #logger.debug("text_entry: %s", text_entry)
 
-                                    """ if api_object.id is None:
-                                        logger.error("ERROR: api_object has null id? api_object: %s", api_object)
-                                        raise
+                                    if not text_entry:
+                                        logger.debug("Process %s: Parsing new TextEntry: %s", type_name, text_key)
+                                        
+                                        object_text: TextEntry = text_class(nested_text_data)
+                                        object_text.object_key = api_object.id
+                                        object_text.object_ref = api_object
 
-                                    if object_text.object_key is None:
-                                        logger.error("ERROR: object_text has null object_key? object_text: %s", object_text)
-                                        raise """
+                                        """ if api_object.id is None:
+                                            logger.error("ERROR: api_object has null id? api_object: %s", api_object)
+                                            raise
 
-                                    #Recursively process language
-                                    #logger.error("TESTING: Pre-process_language: object_text.id: %s object_key: %s object_ref: %s text_data.language.id_: %s", object_text.id, object_text.object_key, object_text.object_ref, text_data.language.id_)
-                                    #logger.error("TESTING: Pre-process_language, current identity_map: %s", self._session.identity_map.items())
-                                    object_text_language = self.process_language(text_data.language.id_, ignore_404=False)
-                                    #object_text_language = self._session.merge(object_text_language)
-                                    object_text.language = object_text_language
-                                    object_text.language_key = object_text_language.id
+                                        if object_text.object_key is None:
+                                            logger.error("ERROR: object_text has null object_key? object_text: %s", object_text)
+                                            raise """
 
-                                    if isinstance(object_text, VersionTextEntry):
-                                        version = self.process_version(text_data.version.id_)
-                                        object_text.version_key = version.id
-                                        object_text.version = version
+                                        #Recursively process language
+                                        #logger.error("TESTING: Pre-process_language: object_text.id: %s object_key: %s object_ref: %s nested_text_data.language.id_: %s", object_text.id, object_text.object_key, object_text.object_ref, nested_text_data.language.id_)
+                                        #logger.error("TESTING: Pre-process_language, current identity_map: %s", self._session.identity_map.items())
+                                        object_text_language = self.process_language(nested_text_data.language.id_, ignore_404=False)
+                                        #object_text_language = self._session.merge(object_text_language)
+                                        object_text.language = object_text_language
+                                        object_text.language_key = object_text_language.id
 
-                                    elif isinstance(object_text, VersionGroupTextEntry):
-                                        vg = self.process_version_group(text_data.version_group.id_)
-                                        object_text.version_group_key = vg.id
-                                        object_text.version_group = vg
+                                        """ if isinstance(object_text, VersionTextEntry):
+                                            version = self.process_version(text_data.version.id_)
+                                            object_text.version_key = version.id
+                                            object_text.version = version
 
-                                    #logger.error("TESTING: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
+                                        elif isinstance(object_text, VersionGroupTextEntry):
+                                            vg = self.process_version_group(text_data.version_group.id_)
+                                            object_text.version_group_key = vg.id
+                                            object_text.version_group = vg """
+                                        
+                                        if version:
+                                            object_text.version_key = version.id
+                                            object_text.version = version
+                                        elif vg:
+                                            object_text.version_group_key = vg.id
+                                            object_text.version_group = vg
 
-                                    #logger.error("TESTING: Calling session.add, current identity_map: %s", self._session.identity_map.items())
-                                    #self._session.add(object_text)
-                                    """ with Session() as session:
-                                        session.add(object_text)
-                                        session.commit() """
-                                    #logger.error("TESTING: Calling session.flush, current identity_map: %s", self._session.identity_map.items())
-                                    #self._session.flush()
+                                        #logger.error("TESTING: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
 
-                                    #logger.error("TESTING: adding links")
+                                        #logger.error("TESTING: Calling session.add, current identity_map: %s", self._session.identity_map.items())
+                                        #self._session.add(object_text)
+                                        """ with Session() as session:
+                                            session.add(object_text)
+                                            session.commit() """
+                                        #logger.error("TESTING: Calling session.flush, current identity_map: %s", self._session.identity_map.items())
+                                        #self._session.flush()
 
-                                    #logger.error("TESTING before append text_attr: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
+                                        #logger.error("TESTING: adding links")
 
-                                    #text_attr.append(object_text)
-                                    #logger.error("TESTING after append text_attr: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
-                                    #object_text_language.names.append(object_text)
-                                    #logger.error("TESTING after append language: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
-                                    object_text = session.merge(object_text)
-                                    session.flush()
+                                        #logger.error("TESTING before append text_attr: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
+
+                                        #text_attr.append(object_text)
+                                        #logger.error("TESTING after append text_attr: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
+                                        #object_text_language.names.append(object_text)
+                                        #logger.error("TESTING after append language: object_text.id: %s object_key: %s language_key: %s api_object.id: %s api_object type: %s", object_text.id, object_text.object_key, object_text.language_key, api_object.id, type_name)
+                                        object_text = session.merge(object_text)
+                                        session.flush()
 
 
 
@@ -479,18 +504,18 @@ class PokeBaseWrapper:
     @api_resource(ContestType)
     def process_contest_type(contest_type: ContestType, type_data: APIResource, self, id_: int, ignore_404: bool = False) -> ContestType:
 
-        #Shouldn't need to do this since the reference is on the berry flavor side
-        """ berry_flavor_data = type_data.berry_flavor
-        berry_flavor: BerryFlavor = self.process_berry_flavor(berry_flavor_data.id_)
-        #if not contest_type.berry_flavor:
-        contest_type.berry_flavor = berry_flavor
-        contest_type.berry_flavor_key = berry_flavor.id
-        # one-to-one mapping, so populate relationship for otherside
-        #if not berry_flavor.contest_type:
-        berry_flavor.contest_type = contest_type
-        berry_flavor.contest_type_key = contest_type.id """
-
         return contest_type
+    
+    @api_resource(ContestEffect)
+    def process_contest_effect(contest_effect: ContestEffect, contest_effect_data: APIResource, self, id_: int, ignore_404: bool = False) -> ContestEffect:
+
+        return contest_effect
+    
+    @api_resource(SuperContestEffect)
+    def process_super_contest_effect(contest_effect: SuperContestEffect, contest_effect_data: APIResource, self, id_: int, ignore_404: bool = False) -> SuperContestEffect:
+
+        return contest_effect
+    
     
 #Encounters
 
@@ -775,6 +800,38 @@ class PokeBaseWrapper:
         # Maybe not right now
 
         return pokedex
+    
+    def process_pokedex_entry(self, entry_data, species: PokemonSpecies) -> PokedexEntry:
+        pokedex_data = entry_data.pokedex
+        processing_key = "PokedexEntry:"+str(species.poke_api_id)+":"+str(pokedex_data.id_)
+        if processing_key in self._processing:
+            logger.debug("process_pokedex_entry: pokedex entry for Species: %s and Pokedex: %s already being processed", species.poke_api_id, pokedex_data.id_)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            pokedex = self.process_pokedex(pokedex_data.id_)
+            stmt = select(PokedexEntry).filter_by(pokemon_species_key=species.id, pokedex_key=pokedex.id)
+            with Session() as session:
+                entry: PokedexEntry = session.scalars(stmt).first()
+            if entry:
+                entry.compare(entry_data)
+            else:
+                entry = PokedexEntry.parse_data(entry_data)
+            
+            entry.pokemon_species_key = species.id
+            entry.pokemon_species = species
+            entry.pokedex_key = pokedex.id
+            entry.pokedex = pokedex
+
+            with Session() as session:
+                entry = session.merge(entry)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+        
+        return entry
 
 
     @api_resource(Version)
@@ -1058,13 +1115,225 @@ class PokeBaseWrapper:
         return region
     
 # Moves
+    @api_resource(Move)
+    def process_move(move: Move, move_data: APIResource, self, id_: int, ignore_404: bool = False) -> Move:
+
+        contest_type_data = move_data.contest_type
+        if contest_type_data:
+            contest_type = self.process_contest_type(contest_type_data.id_)
+            move.contest_type_key = contest_type_data.id
+            move.contest_type = contest_type
+
+        contest_effect_data = move_data.contest_effect
+        if contest_effect_data:
+            contest_effect = self.process_contest_effect(contest_effect_data.id_)
+            move.contest_effect_key = contest_effect.id
+            move.contest_effect = contest_effect
+
+        super_contest_effect_data = move_data.super_contest_effect
+        if super_contest_effect_data:
+            super_contest_effect = self.process_super_contest_effect(super_contest_effect_data.id_)
+            move.super_contest_effect_key = super_contest_effect.id
+            move.super_contest_effect = super_contest_effect
+
+        dc_data = move_data.damage_class
+        dc = self.process_damage_class(dc_data.id_)
+        move.damage_class_key = dc.id
+        move.damage_class = dc
+
+        generation_data = move_data.generation
+        generation = self.process_generation(generation_data.id_)
+        move.generation_key = generation.id
+        move.generation = generation
+
+        ailment_data = move_data.meta.ailment
+        ailment = self.process_move_ailment(ailment_data.id_)
+        move.ailment_key = ailment.id
+        move.ailment = ailment
+
+        category_data = move_data.meta.category
+        category = self.process_move_category(category_data.id_)
+        move.category_key = category.id
+        move.category = category
+
+        target_data = move_data.target
+        target = self.process_move_target(target_data.id_)
+        move.target_key = target.id
+        move.target = target
+
+        type_data = move_data.type
+        type_ = self.process_type(type_data.id_)
+        move.move_type_key = type_.id
+        move.move_type = type_
+
+        for stat_change_data in move_data.stat_changes:
+            stat_change = self.process_move_stat_change(stat_change_data, move)
+
+        for past_value_data in move_data.past_values:
+            past_value = self.process_move_past_value(past_value_data, move)
+    
+        for machine_data in move_data.machines:
+            # machine_data is a MachineVersionDetail object
+            # which contains machine and version_group
+            # but machine also contains the version_group
+            # so we should only need the machine data
+            machine = self.process_machine(machine_data.machine.id_)
+    
+        if move_data.contest_combos:
+            if move_data.contest_combos.normal.use_before:
+                # Process Contest Combos
+                # Only process followup moves, not lead ins
+                with Session() as session:
+                    move = session.merge(move)
+                    existing_followup_ids = {followup.poke_api_id for followup in move.follow_up_contest_combo_moves}
+                    for followup_data in move_data.contest_combos.normal.use_before:
+                        if followup_data.id_ not in existing_followup_ids and followup_data.url not in self._processing:
+                            followup = self.process_move(followup_data.id_)
+                            followup = session.merge(followup)
+                            move.follow_up_contest_combo_moves.append(followup)
+                    session.commit()
+
+            """ for after_move_data in move_data.contest_combos.normal.use_after:
+                chain = self.process_contest_chain(after_move_data, move) """
+            if move_data.contest_combos.super.use_before:
+                # Process Super Contest Combos
+                # Only process followup moves, not lead ins
+                with Session() as session:
+                    move = session.merge(move)
+                    existing_followup_ids = {followup.poke_api_id for followup in move.follow_up_super_contest_combo_moves}
+                    for followup_data in move_data.contest_combos.super.use_before:
+                        if followup_data.id_ not in existing_followup_ids and followup_data.url not in self._processing:
+                            followup = self.process_move(followup_data.id_)
+                            followup = session.merge(followup)
+                            move.follow_up_super_contest_combo_moves.append(followup)
+                    session.commit()
+
+        return move
+    
+    def process_move_stat_change(self, stat_change_data, move: Move) -> MoveStatChange:
+        stat_data = stat_change_data.stat
+        processing_key = "MoveStatChange:"+str(move.poke_api_id)+":"+str(stat_data.id_)
+        if processing_key in self._processing:
+            logger.debug("process_move_stat_change: move stat change for Move: %s and Stat: %s already being processed", move.poke_api_id, stat_data.id_)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            stat = self.process_stat(stat_data.id_)
+            stmt = select(MoveStatChange).filter_by(move_key=move.id, stat_key=stat.id)
+            with Session() as session:
+                stat_change: MoveStatChange = session.scalars(stmt).first()
+            if stat_change:
+                stat_change.compare(stat_change_data)
+            else:
+                stat_change = MoveStatChange.parse_data(stat_change_data)
+            
+            stat_change.move_key = move.id
+            stat_change.move = move
+            stat_change.stat_key = stat.id
+            stat_change.stat = stat
+
+            with Session() as session:
+                stat_change = session.merge(stat_change)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+        
+        return stat_change
+    
+    def process_move_past_value(self, past_value_data, move: Move) -> PastMoveStatValues:
+        type_data = past_value_data.type
+        vg_data = past_value_data.version_group
+        processing_key = "PastMoveStatValues:"+str(move.poke_api_id)+":"+str(vg_data.id_)
+        if processing_key in self._processing:
+            logger.debug("process_move_past_value: move past value for Move: %s and VersionGroup: %s already being processed", move.poke_api_id, vg_data.id_)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            type_ = None
+            if type_data:
+                type_ = self.process_type(type_data.id_)
+            vg = self.process_version_group(vg_data.id_)
+            stmt = select(PastMoveStatValues).filter_by(move_key=move.id, version_group_key=vg.id)
+            with Session() as session:
+                past_value: PastMoveStatValues = session.scalars(stmt).first()
+            if past_value:
+                past_value.compare(past_value_data)
+            else:
+                past_value = PastMoveStatValues.parse_data(past_value_data)
+            
+            past_value.move_key = move.id
+            past_value.move = move
+            past_value.version_group_key = vg.id
+            past_value.version_group = vg
+
+            if type_:
+                past_value.move_type_key = type_.id
+                past_value.move_type = type_
+
+            with Session() as session:
+                past_value = session.merge(past_value)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+        
+        return past_value
+    
+    @api_resource(MoveAilment)
+    def process_move_ailment(ailment: MoveAilment, ailment_data: APIResource, self, id_: int, ignore_404: bool = False) -> MoveAilment:
+        return ailment
+    
     @api_resource(MoveBattleStyle)
     def process_move_battle_style(mbs: MoveBattleStyle, mbs_data: APIResource, self, id_: int, ignore_404: bool = False) -> MoveBattleStyle:
         return mbs
     
+    @api_resource(MoveCategory)
+    def process_move_category(category: MoveCategory, category_data: APIResource, self, id_: int, ignore_404: bool = False) -> MoveCategory:
+        return category
+    
     @api_resource(DamageClass)
     def process_damage_class(dc: DamageClass, dc_data: APIResource, self, id_: int, ignore_404: bool = False) -> DamageClass:
         return dc
+    
+    @api_resource(MoveLearnMethod)
+    def process_move_learn_method(method: MoveLearnMethod, method_data: APIResource, self, id_: int, ignore_404: bool = False) -> MoveLearnMethod:
+        with Session() as session:
+            method = session.merge(method)
+            existing_vg_ids = {version_group.poke_api_id for version_group in method.version_groups}
+            for vg_data in method.version_groups:
+                if vg_data.id_ not in existing_vg_ids:
+                    vg = self.process_version_group(vg_data.id_)
+                    vg = session.merge(vg)
+                    method.attributes.append(vg)
+            session.commit()
+
+        return method
+    
+    @api_resource(MoveTarget)
+    def process_move_target(target: MoveTarget, target_data: APIResource, self, id_: int, ignore_404: bool = False) -> MoveTarget:
+        return target
+    
+    @api_resource(Machine)
+    def process_machine(machine: Machine, machine_data: APIResource, self, id_: int, ignore_404: bool = False) -> Machine:
+        item_data = machine_data.item
+        item = self.process_item(item_data.id_)
+        machine.item_key = item.id
+        machine.item = item
+
+        vg_data = machine_data.version_group
+        vg = self.process_version_group(vg_data.id_)
+        machine.version_group_key = vg.id
+        machine.version_group = vg
+
+        move_data = machine_data.move
+        move = self.process_move(move_data.id_)
+        machine.move_key = move.id
+        machine.move = move
+
+        return machine
     
 # Pokemon
 
@@ -1326,13 +1595,14 @@ class PokeBaseWrapper:
             area_id = encounter_data.location_area.id_
             for version_detail in encounter_data.version_details:
                 pokemon_encounter = self.process_pokemon_encounter(version_detail, area_id, pokemon)
-
-    
-        #pokemon_encounters: Mapped[List["PokemonEncounter"]] = relationship(back_populates="pokemon",
-        #                                    primaryjoin="Pokemon.id == foreign(PokemonEncounter.pokemon_key)")
     
         #moves: Mapped[List["PokemonMove"]] = relationship(back_populates="pokemon",
         #                                    primaryjoin="Pokemon.id == foreign(PokemonMove.pokemon_key)")
+
+        for move_data in pokemon_data.moves:
+            move_id = move_data.move.id_
+            for version_group_detail in move_data.version_group_details:
+                pokemon_move = self.process_pokemon_move(version_group_detail, move_id, pokemon)
 
         return pokemon
     
@@ -1372,6 +1642,49 @@ class PokeBaseWrapper:
             self._processing.remove(processing_key)
 
         return held_item
+    
+    def process_pokemon_move(self, version_group_detail, move_id: int, pokemon: Pokemon) -> PokemonMove:
+        version_group_id = version_group_detail.version_group.id_
+        method_id = version_group_detail.move_learn_method.id_
+        processing_key = "PokemonMove:"+str(pokemon.poke_api_id)+":"+str(method_id)+":"+str(version_group_id)+":"+str(move_id)
+
+        if processing_key in self._processing:
+            logger.debug("process_pokemon_move: pokemon move for pokemon: %s and method: %s and version group: %s and move: %s already being processed", pokemon.poke_api_id, method_id, version_group_id, move_id)
+            raise ProcessingInProgressException
+        
+        self._processing.add(processing_key)
+        try:
+            version_group = self.process_version_group(version_group_id)
+            method = self.process_move_learn_method(method_id)
+            move = self.process_move(move_id)
+            stmt = select(PokemonMove).filter_by(pokemon_key=pokemon.id, move_learn_method_key=method.id, version_group_key=version_group.id, move_key=move.id)
+            with Session() as session:
+                pokemon_move: PokemonMove = session.scalars(stmt).first()
+            if pokemon_move:
+                pokemon_move.compare(version_group_detail)
+            else:
+                pokemon_move = PokemonMove.parse_data(version_group_detail)
+
+            pokemon_move.move_key = move.id
+            pokemon_move.move = move
+
+            pokemon_move.move_learn_method_key = method.id
+            pokemon_move.move_learn_method = method
+
+            pokemon_move.version_group_key = version_group.id
+            pokemon_move.version_group = version_group
+
+            pokemon_move.pokemon_key = pokemon.id
+            pokemon_move.pokemon = pokemon
+
+            with Session() as session:
+                pokemon_move = session.merge(pokemon_move)
+                session.commit()
+
+        finally:
+            self._processing.remove(processing_key)
+
+        return pokemon_move
     
     @api_resource(PokemonForm)
     def process_pokemon_form(form: PokemonForm, form_data: APIResource, self, id_: int, ignore_404: bool = False) -> PokemonForm:
@@ -1472,11 +1785,12 @@ class PokeBaseWrapper:
         for pal_park_data in species_data.pal_park_encounters:
             pal_park_encounter = self.process_pal_park_encounter(pal_park_data, species)
 
+        for pokedex_entry_data in species_data.pokedex_numnbers:
+            pokedex_entry = self.process_pokedex_entry(pokedex_entry_data, species)
+
         # Should be handled as a TextEntry
         #genera: Mapped[List["PokemonGenus"]] = relationship(back_populates="object_ref",
         #                                              primaryjoin="PokemonSpecies.id == foreign(PokemonGenus.object_key)")
-
-
 
         return species
 
@@ -1660,310 +1974,3 @@ class PokeBaseWrapper:
     @api_resource(Language)
     def process_language(language, language_data, self, language_id: int, ignore_404: bool = False) -> "Language":
         return language
-
-    def process_pokemon_species_old(self, species_id: int) -> PokemonSpecies: 
-        logger.debug("process_pokemon_species: species_id: %s", species_id)
-        species, needs_update = PokemonSpecies.get_from_cache(species_id)
-        if species:
-            logger.debug("process_pokemon_species: got from cache: %s, needs_update: %s", species.name, needs_update)
-        else:
-            logger.debug("process_pokemon_species: species_id: %s not in cache, retrieving from api", species_id)
-        if needs_update:
-            species_data = self.get_species_data(species_id)
-            api_url = species_data.url
-            if api_url in self._processing:
-                logger.debug("process_pokemon_species: species_id: %s already being processed", species_id)
-                raise ProcessingInProgressException
-
-            self._processing.add(api_url)
-
-            try:
-
-                #nat_dex = species_data.id
-                links = {}
-
-                if species_data.evolves_from_species:
-                    evolves_from_species_id: int = species_data.evolves_from_species.id_
-                    evolves_from_species = self.process_pokemon_species(evolves_from_species_id)
-
-                    links['evolves_from_species_key'] = evolves_from_species.id
-                    links['evolves_from_species'] = evolves_from_species
-
-                egg_groups = []
-                egg_group_1_id = species_data.egg_groups[0].id_
-                egg_group_1 = self.process_egg_group(egg_group_1_id)
-                egg_groups.append(egg_group_1)
-                if len(species_data.egg_groups) > 1:
-                    egg_group_2_id = species_data.egg_groups[1].id_
-                    egg_group_2 = self.process_egg_group(egg_group_2_id)
-                    egg_groups.append(egg_group_2)
-
-                
-
-
-
-
-
-                species = PokemonSpecies.get_species(species_id)
-                if species:
-                    species.compare(species_data)
-                else:
-                    species = PokemonSpecies.parse_species(species_data)
-            finally:
-                self._processing.remove(api_url)
-
-            return Language
-        
-    """ def process_api_resource(self, T: Type[PokeApiResource], id_: int, ignore_404: bool = False) -> PokeApiResource:
-        type_name = T.__tablename__
-        logger.debug("Process %s: id_: %s", type_name, id_)
-
-        api_object, needs_update = T.get_from_cache(id_)
-        if api_object:
-            logger.debug("Process %s: got from cache: %s, needs_update: %s", type_name, api_object.id_, needs_update)
-        else:
-            logger.debug("Process %s: id_: %s not in cache, retrieving from api", type_name, id_)
-        if needs_update:
-            object_data = self.get_object_data(T, id_, ignore_404)
-            api_url = object_data.url
-            if api_url in self._processing:
-                logger.debug("Process %s: id_: %s already being processed", type_name, id_)
-                raise ProcessingInProgressException
-
-            self._processing.add(api_url)
-
-            try:
-                if api_object:
-                    logger.debug("Process %s: Comparing existing object to API data for id: %s", type_name, id_)
-                    api_object.compare(object_data)
-                else:
-                    logger.debug("Process %s: id_: %s not in cache, retrieving from api", type_name, id_)
-                    api_object = T.parse_data(object_data)
-
-                #links
-
-                self._session.add(api_object)
-
-                #other links
-
-                self._session.commit()
-
-            finally:
-                self._processing.remove(api_url)
-
-        return api_object """
-
-    def process_egg_group_old(self, egg_group_id: int, ignore_404: bool = False) -> EggGroup:
-        logger.debug("process_egg_group: egg_group_id: %s", egg_group_id)
-        egg_group, needs_update = EggGroup.get_from_cache(egg_group_id)
-        if egg_group:
-            logger.debug("process_egg_group: got from cache: %s, needs_update: %s", egg_group.name, needs_update)
-        else:
-            logger.debug("process_egg_group: egg_group_id: %s not in cache, retrieving from api", egg_group_id)
-        if needs_update:
-            #egg_group_data = self.get_egg_group_data(egg_group_id)
-            egg_group_data = self.get_object_data(EggGroup, egg_group_id, ignore_404)
-            api_url = egg_group_data.url
-            if api_url in self._processing:
-                logger.debug("process_egg_group: egg_group_id: %s already being processed", egg_group_id)
-                raise ProcessingInProgressException
-
-            self._processing.add(api_url)
-
-            try:
-
-                #poke_api_id = egg_group_data.id_
-                #egg_group = EggGroup.get_egg_group(poke_api_id)
-                if egg_group:
-                    logger.debug("process_egg_group: Comparing existing EggGroup to API data for: %s", egg_group.name)
-                    egg_group.compare(egg_group_data)
-                else:
-                    logger.debug("process_egg_group: egg_group_id: %s not in cache, retrieving from api", egg_group_id)
-                    egg_group = EggGroup.parse_egg_group(egg_group_data)
-
-                self._session.add(egg_group)
-
-                self.process_names(egg_group, egg_group_data)
-
-                """ logger.debug("process_egg_group: Processing EggGroupNames for EggGroup: %s", egg_group.name)
-                if egg_group.names:
-                    ### Leads to duplicates when text is the same for two different languages
-
-                    name_map: Dict[str, "EggGroupName"] = { egg_group_name.text_entry + str(egg_group_name.language.poke_api_id) : egg_group_name for egg_group_name in egg_group.names }
-                    logger.debug("process_egg_group: Found %s existing EggGroupNames for EggGroup: %s", len(name_map), egg_group.name)
-                else:
-                    name_map = {}
-                
-                for name_data in egg_group_data.names:
-                    name_key = name_data.name + str(name_data.language.id_)
-                    name = name_map.pop(name_key, None)
-
-                    #names: List["EggGroupName"] = []
-                    #for name_data in egg_group_data.names:
-                    if not name:
-                        logger.debug("process_egg_group: Parsing new EggGroupName: %s", name_data.name)
-                        egg_group_name = EggGroupName(name_data)
-                        egg_group_name.object_key = egg_group.id
-                        egg_group_name.object_ref = egg_group
-
-                        egg_group_name_language = self.process_language(name_data.language.id_)
-                        egg_group_name.language = egg_group_name_language
-                        egg_group_name.language_key = egg_group_name_language.id
-
-                        self._session.add(egg_group_name)
-
-                    #names.append(egg_group_name)
-                #egg_group.names = names
-
-                remaining_names = len(name_map)
-                if remaining_names>0:
-                    logger.debug("process_egg_group: Found %s existing EggGroupNames to be deleted for EggGroup: %s", remaining_names, egg_group.name)
-                    for name_to_delete in name_map:
-                        logger.debug("process_egg_group: Deleting EggGroupNames: %s", name_to_delete)
-                    name_ids_to_delete: List[int] = [ name.id for name in name_map.values() ]
-                    self._session.execute(delete(EggGroupName).where(EggGroupName.id.in_(name_ids_to_delete))) """
-
-                #self._session.add(egg_group)
-                self._session.commit()
-
-            finally:
-                self._processing.remove(api_url)
-
-        return egg_group
-
-    """ @rate_limit
-    def get_egg_group_data(self, egg_group_id: int) -> APIResource:
-        egg_group_data = None
-        try: 
-            egg_group_data = pokebase.egg_group(egg_group_id)
-        except HTTPError as ex:
-            if ex.response.status_code != 404:
-                raise ex
-            #else:
-            #    return None
-        return egg_group_data """
-    
-
-    
-    def process_language_old(self, language_id: int, ignore_404: bool = False) -> "Language":
-        logger.debug("process_language: language_id: %s", language_id)
-        language, needs_update = Language.get_from_cache(language_id)
-        if language:
-            logger.debug("process_language: got from cache: %s, needs_update: %s", language.name, needs_update)
-        else:
-            logger.debug("process_language: language_id: %s not in cache, retrieving from api", language_id)
-        if needs_update:
-            #language_data = self.get_language_data(language_id)
-            language_data = self.get_object_data(Language, language_id, ignore_404)
-            api_url = language_data.url
-            if api_url in self._processing:
-                logger.debug("process_language: language_id: %s already being processed", language_id)
-                raise ProcessingInProgressException
-
-            self._processing.add(api_url)
-            try:
-            #poke_api_id = language_data.id_
-            #language, needs_update = Language.get_from_cache(poke_api_id)
-            #if needs_update:
-                if language:
-                    logger.debug("process_language: Comparing existing Language to API data for: %s", language.name)
-                    language.compare(language_data)
-                else:
-                    logger.debug("process_language: Parsing new Language from API data for %s", language_data.name)
-                    language = Language.parse_langauge(language_data)
-
-                self._session.add(language)
-
-                #names: List["LanguageName"] = language.names
-                #names: List["LanguageName"] = []
-
-                self.process_names(language, language_data)
-
-                """ logger.debug("process_language: Processing LanguageNames for Language: %s", language.name)
-                if language.names:
-                    name_map: Dict[str, "LanguageName"] = { language_name.text_entry : language_name for language_name in language.names }
-                    logger.debug("process_language: Found %s existing LanguageNames for Language: %s", len(name_map), language.name)
-                else:
-                    name_map = {}
-                
-                for name_data in language_data.names:
-                    name = name_map.pop(name_data.name, None)
-
-                    #if name:
-                    #    names.append(name_map.get(name_data.name))
-                    #else:
-                    if not name:
-                        logger.debug("process_language: Parsing new LanguageName: %s", name_data.name)
-                        language_name = LanguageName(name_data)
-                        language_name.object_key = language.id
-                        language_name.object_ref = language
-
-                        #Recursively process language
-                        language_name_language = self.process_language(name_data.language.id_)
-                        language_name.language = language_name_language
-                        language_name.language_key = language_name_language.id
-                        self._session.add(language_name)
-
-                        #names.append(language_name)
-                        #name_map[language_name.text_entry] = language_name
-                    #language.names = names
-                remaining_names = len(name_map)
-                if remaining_names>0:
-                    logger.debug("process_language: Found %s existing LanguageNames to be deleted for Language: %s", remaining_names, language.name)
-                    for name_to_delete in name_map:
-                        logger.debug("process_language: Deleting LanguageName: %s", name_to_delete)
-                    name_ids_to_delete: List[int] = [ name.id for name in name_map.values() ]
-                    self._session.execute(delete(LanguageName).where(LanguageName.id.in_(name_ids_to_delete))) """
-
-                self._session.commit()
-
-            finally:
-                self._processing.remove(api_url)
-
-        return language
-
-    """ @rate_limit
-    def get_language_data(self, language_id: int) -> APIResource:
-        language_data = None
-        try:
-            language_data = pokebase.language(language_id)
-        except HTTPError as ex:
-            if ex.response.status_code != 404:
-                raise ex
-
-        return language_data """
-    
-    """ def process_names(self, object: PokeApiResource, object_data: APIResource):
-        object_class = inspect(object).mapper.class_
-        name_class = inspect(object).mapper.relationships.names.mapper.class_
-        if object.names:
-            name_map: Dict[str, TextEntry] = { name.text_entry + str(name.language.poke_api_id): name for name in object.names }
-            logger.debug("process_names: Found %s existing names for %s: %s", len(name_map), object_class.__tablename__, object.name)
-        else:
-            name_map = {}
-                
-            for name_data in object_data.names:
-                name_key = name_data.name + str(name_data.language.id_)
-                name = name_map.pop(name_key, None)
-
-                if not name:
-                    logger.debug("process_names: Parsing new name: %s", name_data.name)
-                    object_name = name_class(name_data)
-                    object_name.object_key = object.id
-                    object_name.object_ref = object
-
-                    #Recursively process language
-                    language_name_language = self.process_language(name_data.language.id_, ignore_404=False)
-                    object_name.language = language_name_language
-                    object_name.language_key = language_name_language.id
-                    self._session.add(object_name)
-
-            remaining_names = len(name_map)
-            if remaining_names>0:
-                logger.debug("process_names: Found %s existing names to be deleted for %s: %s", remaining_names, object_class.__tablename__, object.name)
-                for name_to_delete in name_map:
-                    logger.debug("process_names: Deleting name: %s", name_to_delete)
-                name_ids_to_delete: List[int] = [ name.id for name in name_map.values() ]
-                self._session.execute(delete(name_class).where(name_class.id.in_(name_ids_to_delete))) """
-
-    #def process_text_entries(self, )

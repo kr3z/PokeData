@@ -18,12 +18,12 @@ class Item(Base, PokeApiResource):
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     cost: Mapped[int] = mapped_column(Integer)
-    fling_power: Mapped[int] = mapped_column(SmallInteger)
+    fling_power: Mapped[Optional[int]] = mapped_column(SmallInteger)
     fling_effect_key: Mapped[Optional[int]] = mapped_column(Integer)
     category_key: Mapped[int] = mapped_column(Integer)
     #baby_trigger_for_key: Mapped[Optional[int]] = mapped_column(Integer)
     #berry_key: Mapped[Optional[int]] = mapped_column(Integer)
-    sprite_url: Mapped[str] = mapped_column(String(500))
+    sprite_url: Mapped[Optional[str]] = mapped_column(String(500))
 
     fling_effect: Mapped["ItemFlingEffect"] = relationship(back_populates="items", cascade="save-update",
                                                            primaryjoin="Item.fling_effect_key == ItemFlingEffect.id",

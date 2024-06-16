@@ -113,6 +113,20 @@ ItemToItemAttributeLink = Table(
     Column("item_attribute_key", ForeignKey("ItemAttribute.id"), primary_key=True),
 )
 
+ContestComboLink = Table(
+    "ContestComboLink",
+    Base.metadata,
+    Column("lead_move_key", ForeignKey("Move.id"), primary_key=True),
+    Column("follow_up_move_key", ForeignKey("Move.id"), primary_key=True),
+)
+
+SuperContestComboLink = Table(
+    "SuperContestComboLink",
+    Base.metadata,
+    Column("lead_move_key", ForeignKey("Move.id"), primary_key=True),
+    Column("follow_up_move_key", ForeignKey("Move.id"), primary_key=True),
+)
+
 class PokeApiResource:
     poke_api_id: Mapped[int] = mapped_column(Integer)
 

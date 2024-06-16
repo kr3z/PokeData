@@ -107,6 +107,12 @@ class VersionGroupTextEntry(TextEntry):
     def __init__(self, data):
         super().__init__(data)
 
+class NestedVersionGroupTextEntry(VersionGroupTextEntry):
+    __mapper_args__ = {"polymorphic_abstract": True}
+
+    def __init__(self, data):
+        super().__init__(data)
+
 class VersionTextEntry(TextEntry):
     version_key: Mapped[int] = mapped_column(Integer, nullable=True)
     version: Mapped["Version"] = relationship(primaryjoin="VersionTextEntry.version_key == Version.id",
@@ -166,13 +172,14 @@ class LanguageName(TextEntry):
 ###################################
 ####### Pokemon Text Entries ######
 ###################################
-class AbilityEffectChange(VersionGroupTextEntry):
+class AbilityEffectChange(NestedVersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["PokemonAbility"] = relationship(back_populates="effect_changes", cascade="save-update",
                                             primaryjoin="AbilityEffectChange.object_key == PokemonAbility.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "AbilityEffectChange"}
     text_entry_name = "effect"
+    nested_entry_name = "effect_entries"
 
     def __init__(self, data):
         super().__init__(data)
@@ -401,7 +408,7 @@ class PokemonShapeName(TextEntry):
 #######################
 ### Move Text Types ###
 #######################
-class MoveEffectChange(VersionGroupTextEntry):
+class MoveEffectChange(NestedVersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["Move"] = relationship(back_populates="effect_changes", cascade="save-update",
                                             primaryjoin="MoveEffectChange.object_key == Move.id",
@@ -409,6 +416,8 @@ class MoveEffectChange(VersionGroupTextEntry):
     #effect: Mapped[str] = mapped_column(String(200),nullable=True)
     __mapper_args__ = {"polymorphic_identity": "MoveEffectChange"}
     text_entry_name = "effect"
+    nested_entry_name = "effect_entries"
+    
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.effect
@@ -772,7 +781,7 @@ class ContestEffectEffect(TextEntry):
         super().__init__(data)
         self.text_entry = data.effect
 
-class ContestEffectFlavorText(VersionGroupTextEntry):
+class ContestEffectFlavorText(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["ContestEffect"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="ContestEffectFlavorText.object_key == ContestEffect.id",
@@ -783,7 +792,7 @@ class ContestEffectFlavorText(VersionGroupTextEntry):
         super().__init__(data)
         self.text_entry = data.flavor_text
 
-class SuperContestEffectFlavorText(VersionGroupTextEntry):
+class SuperContestEffectFlavorText(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["SuperContestEffect"] = relationship(back_populates="flavor_text_entries", cascade="save-update",
                                             primaryjoin="SuperContestEffectFlavorText.object_key == SuperContestEffect.id",
