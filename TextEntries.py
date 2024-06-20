@@ -1,8 +1,9 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean
+from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, inspect
 
-from Base import Base, utf8mb4_1000, utf8mb4_200, utf8mb4_50, get_next_id, Session, PokeApiResource
+from Base import Base, utf8mb4_2500, utf8mb4_1000, utf8mb4_200, utf8mb4_50, get_next_id, Session, PokeApiResource, TinyInteger, ManyToOneAttrs
 
 if TYPE_CHECKING:
     from Berries import BerryFirmness, BerryFlavor
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from Moves import Move, DamageClass, PastMoveStatValues, MoveAilment, MoveBattleStyle
     from Moves import MoveCategory, MoveLearnMethod, MoveTarget
     from Items import Item, ItemAttribute, ItemFlingEffect, ItemCategory, ItemPocket
-    from Locations import Location, LocationArea, PalParkArea
+    from Locations import Location, LocationArea, PalParkArea, Region
 
 
 class Language(Base, PokeApiResource):
@@ -27,6 +28,7 @@ class Language(Base, PokeApiResource):
     official: Mapped[bool] = mapped_column(Boolean)
     iso639: Mapped[str] = mapped_column(String(10))
     iso3166: Mapped[str] = mapped_column(String(10))
+    order: Mapped[Optional[int]] = mapped_column(TinyInteger)
 
     names: Mapped[List["LanguageName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                  primaryjoin="Language.id == foreign(LanguageName.object_key)")
@@ -36,8 +38,25 @@ class Language(Base, PokeApiResource):
     )
 
     _cache: Dict[int, "Language"] = {}
+    _csv = "languages.csv"
+    relationship_attr_map = {}
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["Language"]:
+        languages = []
+        for id_, data in df.iterrows():
+            poke_api_id = id_
+            name = data.identifier
+            official = data.official
+            iso639 = data.iso639
+            iso3166 = data.iso3166
+            order = data.order
+            language = cls(poke_api_id=poke_api_id, name=name, official=official, iso639=iso639, iso3166=iso3166, order=order)
+            cls._cache[language.poke_api_id] = language
+            languages.append(language)
+        return languages
+
+    """ @classmethod
     def parse_data(cls,data) -> "Language":
     #def parse_langauge(cls,data) -> "Language":
         poke_api_id = data.id_
@@ -49,19 +68,18 @@ class Language(Base, PokeApiResource):
         language = cls(poke_api_id=poke_api_id, name=name, official=official, iso639=iso639, iso3166=iso3166)
         cls._cache[poke_api_id] = language
 
-        return language
+        return language """
 
-    def __init__(self, poke_api_id: int, name: str, official: bool, iso639: str, iso3166: str):
+    def __init__(self, poke_api_id: int, name: str, official: bool, iso639: str, iso3166: str, order: int):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
         self.name = name
         self.official = official
         self.iso639 = iso639
         self.iso3166 = iso3166
+        self.order = order
 
-        #self.names: List["LanguageName"] = []
-
-    def compare(self, data):
+    """ def compare(self, data):
         # This should never change
         #if self.poke_api_id != data.id_:
         #    self.poke_api_id = data.id_
@@ -72,7 +90,27 @@ class Language(Base, PokeApiResource):
         if self.iso639 != data.iso639:
             self.iso639 = data.iso639
         if self.iso3166 != data.iso3166:
+            self.iso3166 = data.iso3166 """
+
+    def compare(self, data: pd.Series) -> bool:
+        updated = False
+        if self.name != data.identifier:
+            self.name = data.identifier
+            updated = True
+        if self.official != data.official:
+            self.official = data.official
+            updated = True
+        if self.iso639 != data.iso639:
+            self.iso639 = data.iso639
+            updated = True
+        if self.iso3166 != data.iso3166:
             self.iso3166 = data.iso3166
+            updated = True
+        if self.order != data.order:
+            self.order = data.order
+            updated = True
+        return updated
+
 
 ###################################
 ####### Base TextEntry table ######
@@ -85,15 +123,26 @@ class TextEntry(Base):
 
     language: Mapped["Language"] = relationship(primaryjoin="TextEntry.language_key == Language.id",
                                                 foreign_keys=language_key, cascade="save-update")
-    text_entry: Mapped[str] = mapped_column(utf8mb4_1000)
+    text_entry: Mapped[str] = mapped_column(utf8mb4_2500)
 
     __mapper_args__ = {
         "polymorphic_on": "type",
         "polymorphic_abstract": True
     }
+    relationship_attr_map = {"local_language_id": ManyToOneAttrs("language","language_key")}
 
     def __init__(self, data):
         self.id = get_next_id()
+
+    def get_text_key(self):
+        return str(self.language.poke_api_id)
+    
+    def compare(self, data) -> bool:
+        updated = False
+        if self.text_entry != data[self.text_entry_name]:
+            self.text_entry = data[self.text_entry_name]
+            updated = True
+        return updated
 
 ###################################
 ########## Abstract types #########
@@ -103,9 +152,15 @@ class VersionGroupTextEntry(TextEntry):
     version_group: Mapped["VersionGroup"] = relationship(primaryjoin="VersionGroupTextEntry.version_group_key == VersionGroup.id",
                                                         foreign_keys=version_group_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"version_group_id": ManyToOneAttrs("version_group","version_group_key")})
 
     def __init__(self, data):
         super().__init__(data)
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.version_group.poke_api_id)
 
 class NestedVersionGroupTextEntry(VersionGroupTextEntry):
     __mapper_args__ = {"polymorphic_abstract": True}
@@ -113,14 +168,23 @@ class NestedVersionGroupTextEntry(VersionGroupTextEntry):
     def __init__(self, data):
         super().__init__(data)
 
+    def get_text_key(self):
+        return super().get_text_key()
+
 class VersionTextEntry(TextEntry):
     version_key: Mapped[int] = mapped_column(Integer, nullable=True)
     version: Mapped["Version"] = relationship(primaryjoin="VersionTextEntry.version_key == Version.id",
                                                 foreign_keys=version_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"version_id": ManyToOneAttrs("version","version_key")})
 
     def __init__(self, data):
         super().__init__(data)
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.version.poke_api_id)
 
 class VerboseEffect(TextEntry):
     short_effect: Mapped[str] = mapped_column(utf8mb4_200, nullable=True)
@@ -130,6 +194,9 @@ class VerboseEffect(TextEntry):
     def __init__(self, data):
         super().__init__(data)
         self.short_effect = data.short_effect
+
+    def get_text_key(self):
+        return super().get_text_key()
 
 """ class Effect(TextEntry):
     text_entry_name = "effect"
@@ -163,15 +230,63 @@ class LanguageName(TextEntry):
                                             primaryjoin="LanguageName.object_key == Language.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "LanguageName"}
+
     text_entry_name = "name"
+
+    _csv = "language_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"language_id": ManyToOneAttrs("object_ref","object_key")})
+
+    """ @classmethod
+    def build_text_keys(cls, data: pd.DataFrame) -> Dict[int,str]:
+        idx_to_text_keys: Dict[int, str] = {}
+        for idx, row_data in data.iterrows():
+            text_key = str(row_data.language_id) + ":" + str(row_data.local_language_id)
+            idx_to_text_keys[idx] = text_key
+        return idx_to_text_keys """
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
-        
+        self.text_entry = data[self.text_entry_name]
+
+        ins = inspect(self)
+        object_class = ins.mapper.relationships.object_ref.mapper.class_
+        language_class = ins.mapper.relationships.language.mapper.class_
+        object_ref, _ = object_class.get_from_cache(data.language_id)
+        lang_ref, _ = language_class.get_from_cache(data.local_language_id)
+        self.object_ref = object_ref
+        self.object_key = object_ref.id
+        self.language = lang_ref
+        self.language_key = lang_ref.id
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+       
 
 ###################################
 ####### Pokemon Text Entries ######
 ###################################
+
+class PokemonAbilityName(TextEntry):
+    object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
+    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="names", cascade="save-update",
+                                            primaryjoin="PokemonAbilityName.object_key == PokemonAbility.id",
+                                            foreign_keys=object_key)
+    __mapper_args__ = {"polymorphic_identity": "PokemonAbilityName"}
+    text_entry_name = "name"
+    _csv = "ability_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"ability_id": ManyToOneAttrs("object_ref","object_key")})
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class AbilityEffectChange(NestedVersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["PokemonAbility"] = relationship(back_populates="effect_changes", cascade="save-update",
@@ -180,10 +295,16 @@ class AbilityEffectChange(NestedVersionGroupTextEntry):
     __mapper_args__ = {"polymorphic_identity": "AbilityEffectChange"}
     text_entry_name = "effect"
     nested_entry_name = "effect_entries"
+    _csv = "ability_changelog_prose.csv"
+    _versioned_csv = "ability_changelog.csv" # has id values
 
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.effect
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class AbilityFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -192,9 +313,14 @@ class AbilityFlavorText(VersionGroupTextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "AbilityFlavorText"}
     text_entry_name = "flavor_text"
+    _csv = "ability_flavor_text.csv"
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.flavor_text
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class AbilityEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -203,9 +329,14 @@ class AbilityEffect(VerboseEffect):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "AbilityEffect"}
     text_entry_name = "effect"
+    _csv = "ability_prose.csv"
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.effect
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class CharacteristicDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -213,10 +344,16 @@ class CharacteristicDescription(TextEntry):
                                             primaryjoin="CharacteristicDescription.object_key == PokemonCharacteristic.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "CharacteristicDescription"}
-    text_entry_name = "description"
+    #text_entry_name = "description"
+    text_entry_name = "message"
+    _csv = "characteristic_tsxt.csv"
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.description
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -227,7 +364,11 @@ class PokemonName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonSpeciesFlavorText(VersionTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -240,6 +381,10 @@ class PokemonSpeciesFlavorText(VersionTextEntry):
         super().__init__(data)
         self.text_entry = data.flavor_text
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class PokemonFormDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["PokemonSpecies"] = relationship(back_populates="form_descriptions", cascade="save-update",
@@ -250,6 +395,10 @@ class PokemonFormDescription(TextEntry):
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.description
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonGenus(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -262,6 +411,10 @@ class PokemonGenus(TextEntry):
         super().__init__(data)
         self.text_entry = data.genus
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class PokemonTypeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["PokemonType"] = relationship(back_populates="names", cascade="save-update",
@@ -271,7 +424,11 @@ class PokemonTypeName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonStatName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -282,7 +439,11 @@ class PokemonStatName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokeathlonStatName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -293,7 +454,11 @@ class PokeathlonStatName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonNatureName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -304,18 +469,11 @@ class PokemonNatureName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
 
-class PokemonAbilityName(TextEntry):
-    object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
-    object_ref: Mapped["PokemonAbility"] = relationship(back_populates="names", cascade="save-update",
-                                            primaryjoin="PokemonAbilityName.object_key == PokemonAbility.id",
-                                            foreign_keys=object_key)
-    __mapper_args__ = {"polymorphic_identity": "PokemonAbilityName"}
-    text_entry_name = "name"
-    def __init__(self, data):
-        super().__init__(data)
-        self.text_entry = data.name
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class EggGroupName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -326,7 +484,11 @@ class EggGroupName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class GrowthRateDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -339,6 +501,10 @@ class GrowthRateDescription(TextEntry):
         super().__init__(data)
         self.text_entry = data.description
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class PokemonColorName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["PokemonColor"] = relationship(back_populates="names", cascade="save-update",
@@ -348,7 +514,11 @@ class PokemonColorName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonFormName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -359,7 +529,11 @@ class PokemonFormName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonFormFormName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -370,7 +544,11 @@ class PokemonFormFormName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonHabitatName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -381,7 +559,11 @@ class PokemonHabitatName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokemonShapeAwesomeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -394,6 +576,10 @@ class PokemonShapeAwesomeName(TextEntry):
         super().__init__(data)
         self.text_entry = data.awesome_name
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class PokemonShapeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["PokemonShape"] = relationship(back_populates="names", cascade="save-update",
@@ -403,7 +589,11 @@ class PokemonShapeName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 #######################
 ### Move Text Types ###
@@ -417,10 +607,14 @@ class MoveEffectChange(NestedVersionGroupTextEntry):
     __mapper_args__ = {"polymorphic_identity": "MoveEffectChange"}
     text_entry_name = "effect"
     nested_entry_name = "effect_entries"
-    
+
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.effect
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class MoveFlavorText(VersionGroupTextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -433,6 +627,10 @@ class MoveFlavorText(VersionGroupTextEntry):
         super().__init__(data)
         self.text_entry = data.flavor_text
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class MoveEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["Move"] = relationship(back_populates="effect_entries", cascade="save-update",
@@ -444,6 +642,10 @@ class MoveEffect(VerboseEffect):
         super().__init__(data)
         self.text_entry = data.effect
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class MoveName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["Move"] = relationship(back_populates="names", cascade="save-update",
@@ -453,7 +655,11 @@ class MoveName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PastMoveEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -466,6 +672,10 @@ class PastMoveEffect(VerboseEffect):
         super().__init__(data)
         self.text_entry = data.effect
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class MoveAilmentName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["MoveAilment"] = relationship(back_populates="names", cascade="save-update",
@@ -475,7 +685,11 @@ class MoveAilmentName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class MoveBattleStyleName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -486,7 +700,11 @@ class MoveBattleStyleName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class MoveCategoryDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -499,6 +717,10 @@ class MoveCategoryDescription(TextEntry):
         super().__init__(data)
         self.text_entry = data.description
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class DamageClassName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["DamageClass"] = relationship(back_populates="names", cascade="save-update",
@@ -508,7 +730,11 @@ class DamageClassName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class DamageClassDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -521,6 +747,10 @@ class DamageClassDescription(TextEntry):
         super().__init__(data)
         self.text_entry = data.description
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class MoveLearnMethodName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["MoveLearnMethod"] = relationship(back_populates="names", cascade="save-update",
@@ -530,7 +760,11 @@ class MoveLearnMethodName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class MoveLearnMethodDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -543,6 +777,10 @@ class MoveLearnMethodDescription(TextEntry):
         super().__init__(data)
         self.text_entry = data.description
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class MoveTargetDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["MoveTarget"] = relationship(back_populates="descriptions", cascade="save-update",
@@ -554,6 +792,10 @@ class MoveTargetDescription(TextEntry):
         super().__init__(data)
         self.text_entry = data.description
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class MoveTargetName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["MoveTarget"] = relationship(back_populates="names", cascade="save-update",
@@ -563,7 +805,11 @@ class MoveTargetName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ###################################
 ###### Location Text Entries #####
@@ -577,7 +823,11 @@ class LocationName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class LocationAreaName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -588,7 +838,11 @@ class LocationAreaName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PalParkAreaName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -599,7 +853,48 @@ class PalParkAreaName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+    
+class RegionName(TextEntry):
+    object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
+    object_ref: Mapped["Region"] = relationship(back_populates="names", cascade="save-update",
+                                            primaryjoin="RegionName.object_key == Region.id",
+                                            foreign_keys=object_key)
+    __mapper_args__ = {"polymorphic_identity": "RegionName"}
+    text_entry_name = "name"
+    _csv = "region_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"region_id": ManyToOneAttrs("object_ref","object_key")})
+
+    """ @classmethod
+    def build_text_keys(cls, data: pd.DataFrame) -> Dict[int,str]:
+        idx_to_text_keys: Dict[int, str] = {}
+        for idx, row_data in data.iterrows():
+            text_key = str(row_data.region_id) + ":" + str(row_data.local_language_id)
+            idx_to_text_keys[idx] = text_key
+        return idx_to_text_keys """
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.text_entry = data[self.text_entry_name]
+
+        """ ins = inspect(self)
+        object_class = ins.mapper.relationships.object_ref.mapper.class_
+        language_class = ins.mapper.relationships.language.mapper.class_
+        object_ref, _ = object_class.get_from_cache(data.region_id)
+        lang_ref, _ = language_class.get_from_cache(data.local_language_id)
+        self.object_ref = object_ref
+        self.object_key = object_ref.id
+        self.language = lang_ref
+        self.language_key = lang_ref.id """
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ###################################
 ######## Item Text Entries ########
@@ -615,6 +910,10 @@ class ItemFlavorText(VersionGroupTextEntry):
         super().__init__(data)
         self.text_entry = data.text
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class ItemEffect(VerboseEffect):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["Item"] = relationship(back_populates="effect_entries", cascade="save-update",
@@ -626,6 +925,10 @@ class ItemEffect(VerboseEffect):
         super().__init__(data)
         self.text_entry = data.effect
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class ItemName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["Item"] = relationship(back_populates="names", cascade="save-update",
@@ -635,7 +938,11 @@ class ItemName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class ItemAttributeName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -646,7 +953,11 @@ class ItemAttributeName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class ItemAttributeDescription(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -659,6 +970,10 @@ class ItemAttributeDescription(TextEntry):
         super().__init__(data)
         self.text_entry = data.description
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 class ItemCategoryName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["ItemCategory"] = relationship(back_populates="names", cascade="save-update",
@@ -668,7 +983,11 @@ class ItemCategoryName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class ItemFlingEffectEffect(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -681,6 +1000,10 @@ class ItemFlingEffectEffect(TextEntry):
         super().__init__(data)
         self.text_entry = data.effect
 
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
 """ class ItemFlingEffectName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
     object_ref: Mapped["ItemFlingEffect"] = relationship(back_populates="names", cascade="save-update",
@@ -690,7 +1013,7 @@ class ItemFlingEffectEffect(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name """
+        self.text_entry = data[self.text_entry_name] """
 
 class ItemPocketName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -701,7 +1024,11 @@ class ItemPocketName(TextEntry):
     text_entry_name = "name"
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ####################################
 ###### Evolution Text Entries ######
@@ -713,9 +1040,17 @@ class EvolutionTriggerName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EvolutionTriggerName"}
     text_entry_name = "name"
+    _csv = "evolution_trigger_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"evolution_trigger_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ###################################
 ##### Encounter Text Entries ######
@@ -727,9 +1062,17 @@ class EncounterMethodName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EncounterMethodName"}
     text_entry_name = "name"
+    _csv = "encounter_method_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"encounter_method_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class EncounterConditionName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -738,9 +1081,17 @@ class EncounterConditionName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EncounterConditionName"}
     text_entry_name = "name"
+    _csv = "encounter_condition_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"encounter_condition_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class EncounterConditionValueName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -749,9 +1100,17 @@ class EncounterConditionValueName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "EncounterConditionValueName"}
     text_entry_name = "name"
+    _csv = "encounter_condition_value_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"encounter_condition_value_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ###################################
 ####### Contest Text Entries ######
@@ -765,10 +1124,28 @@ class ContestName(TextEntry):
     color: Mapped[str] = mapped_column(utf8mb4_50, nullable=True)
     __mapper_args__ = {"polymorphic_identity": "ContestName"}
     text_entry_name = "name"
+    _csv = "contest_type_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"contest_type_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
         self.color = data.color
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+    
+    def compare(self, data) -> bool:
+        updated = False
+        if self.text_entry != data[self.text_entry_name]:
+            self.text_entry = data[self.text_entry_name]
+            updated = True
+        if self.color != data.color:
+            self.color = data.color
+            updated = True
+        return updated
 
 class ContestEffectEffect(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -777,9 +1154,17 @@ class ContestEffectEffect(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ContestEffectEffect"}
     text_entry_name = "effect"
+    _csv = "contest_effect_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"contest_effect_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.effect
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class ContestEffectFlavorText(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -788,9 +1173,17 @@ class ContestEffectFlavorText(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "ContestEffectFlavorText"}
     text_entry_name = "flavor_text"
+    _csv = "contest_effect_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"contest_effect_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.flavor_text
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class SuperContestEffectFlavorText(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -799,9 +1192,17 @@ class SuperContestEffectFlavorText(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "SuperContestEffectFlavorText"}
     text_entry_name = "flavor_text"
+    _csv = "super_contest_effect_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"super_contest_effect_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.flavor_text
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ###################################
 ####### Berry Text Entries #######
@@ -813,9 +1214,17 @@ class BerryFirmnessName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "BerryFirmnessName"}
     text_entry_name = "name"
+    _csv = "berry_firmness_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"berry_firmness_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class BerryFlavorName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -823,10 +1232,21 @@ class BerryFlavorName(TextEntry):
                                             primaryjoin="BerryFlavorName.object_key == BerryFlavor.id",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "BerryFlavorName"}
-    text_entry_name = "name"
+    #text_entry_name = "name"
+    text_entry_name = "flavor"
+    ### !!! No CSV !!!
+    ### oh wait, its in contest_type_names, but as flavor
+    _csv = "contest_type_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"contest_type_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 ###################################
 ####### Games Text Entries #######
@@ -838,9 +1258,17 @@ class PokedexDescription(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokedexDescription"}
     text_entry_name = "description"
+    _csv = "pokedex_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"pokedex_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
         self.text_entry = data.description
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class PokedexName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -849,9 +1277,17 @@ class PokedexName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokedexName"}
     text_entry_name = "name"
+    _csv = "pokedex_prose.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"pokedex_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class VersionName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -860,9 +1296,17 @@ class VersionName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "VersionName"}
     text_entry_name = "name"
+    _csv = "version_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"version_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
 
 class GenerationName(TextEntry):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -871,6 +1315,14 @@ class GenerationName(TextEntry):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "GenerationName"}
     text_entry_name = "name"
+    _csv = "generation_names.csv"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"generation_id": ManyToOneAttrs("object_ref","object_key")})
+
     def __init__(self, data):
         super().__init__(data)
-        self.text_entry = data.name
+        self.text_entry = data[self.text_entry_name]
+
+    def get_text_key(self):
+        text_key = super().get_text_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  

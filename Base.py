@@ -2,6 +2,7 @@ import os
 import logging
 import logging.config
 import configparser
+from collections import namedtuple
 from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Mapped, mapped_column
@@ -30,12 +31,15 @@ sqlalchemy_url = URL.create(
     database=db_name,
 )
 
+utf8mb4_2500 = String(1000).with_variant(mysql.VARCHAR(2500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_1000 = String(1000).with_variant(mysql.VARCHAR(1000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_200 = String(200).with_variant(mysql.VARCHAR(200,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_50 = String(50).with_variant(mysql.VARCHAR(50,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 
 TinyInteger = SmallInteger().with_variant(mysql.TINYINT, 'mysql','mariadb')
 MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb') 
+
+ManyToOneAttrs = namedtuple('ManyToOneAttrs', ['ref', 'key'])
 
 class Base(DeclarativeBase):
     pass

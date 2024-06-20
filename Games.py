@@ -1,8 +1,9 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, Table, Column, ForeignKey, SmallInteger
 
-from Base import Base, MoveLearnMethodToVersionGroupLink, RegionToVersionGroupLink, PokedexToVersionGroupLink, PokeApiResource, get_next_id
+from Base import Base, MoveLearnMethodToVersionGroupLink, RegionToVersionGroupLink, PokedexToVersionGroupLink, PokeApiResource, get_next_id, ManyToOneAttrs
 
 if TYPE_CHECKING:
     from TextEntries import PokedexDescription, PokedexName, GenerationName, VersionName
@@ -14,12 +15,12 @@ if TYPE_CHECKING:
 class Generation(Base, PokeApiResource):
     __tablename__ = "Generation"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    #region_key: Mapped[int] = mapped_column(Integer)
+    region_key: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(100))
 
     main_region: Mapped["Region"] = relationship(back_populates="main_generation", cascade="save-update",
-                                            primaryjoin="Generation.id == foreign(Region.generation_key)")#,
-                                            #foreign_keys=region_key)
+                                            primaryjoin="Generation.region_key == Region.id",
+                                            foreign_keys=region_key)
 
     version_groups: Mapped[List["VersionGroup"]] = relationship(back_populates="generation", cascade="save-update",
                                                                 primaryjoin="Generation.id == foreign(VersionGroup.generation_key)")
@@ -38,19 +39,31 @@ class Generation(Base, PokeApiResource):
     
     
     _cache: Dict[int, "Generation"] = {}
-
+    _csv = "generations.csv"
+    relationship_attr_map = {"main_region_id": ManyToOneAttrs("main_region","region_key")}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Generation_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["Generation"]:
+        generations = []
+        for id_, generation_data in df.iterrows():
+            poke_api_id = id_
+            name = generation_data.identifier
+            generation = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[generation.poke_api_id] = generation
+            generations.append(generation)
+        return generations
+
+    """ @classmethod
     def parse_data(cls,data) -> "Generation":
         poke_api_id = data.id_
         name = data.name
 
         generation = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[generation.poke_api_id] = generation
-        return generation
+        return generation """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -58,8 +71,12 @@ class Generation(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        updated = False
+        if self.name != data.identifier:
+            self.name = data.identifier
+            updated = True
+        return updated
+
 
 class Pokedex(Base, PokeApiResource):
     __tablename__ = "Pokedex"
@@ -155,18 +172,22 @@ class Version(Base, PokeApiResource):
                                                       primaryjoin="Version.id == foreign(VersionName.object_key)")
     
     _cache: Dict[int, "Version"] = {}
-
+    _csv = "versions.csv"
+    relationship_attr_map = {"version_group_id": ManyToOneAttrs("version_group","version_group_key")}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Version_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "Version":
-        poke_api_id = data.id_
-        name = data.name
-        version = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[version.poke_api_id] = version
-        return version
+    def parse_csv(cls, df: pd.DataFrame) -> List["Version"]:
+        versions = []
+        for id_, version_data in df.iterrows():
+            poke_api_id = id_
+            name = version_data.identifier
+            version = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[version.poke_api_id] = version
+            versions.append(version)
+        return versions
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -174,8 +195,8 @@ class Version(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class VersionGroup(Base, PokeApiResource):
     __tablename__ = "VersionGroup"
@@ -204,19 +225,24 @@ class VersionGroup(Base, PokeApiResource):
     pokedexes: Mapped[List["Pokedex"]] = relationship(back_populates="version_groups",secondary=PokedexToVersionGroupLink, cascade="save-update")
 
     _cache: Dict[int, "VersionGroup"] = {}
+    _csv = "version_groups.csv"
+    relationship_attr_map = {"generation_id": ManyToOneAttrs("generation","generation_key")}
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_VersionGroup_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "VersionGroup":
-        poke_api_id = data.id_
-        name = data.name
-        order = data.order
-        version_group = cls(poke_api_id=poke_api_id, name=name, order=order)
-        cls._cache[version_group.poke_api_id] = version_group
-        return version_group
+    def parse_csv(cls, df: pd.DataFrame) -> List["VersionGroup"]:
+        vgs = []
+        for id_, vg_data in df.iterrows():
+            poke_api_id = id_
+            name = vg_data.identifier
+            order = vg_data.order
+            vg = cls(poke_api_id=poke_api_id, name=name, order=order)
+            cls._cache[vg.poke_api_id] = vg
+            vgs.append(vg)
+        return vgs
     
     def __init__(self, poke_api_id: int, name: str, order: int):
         self.id = get_next_id()
@@ -225,10 +251,11 @@ class VersionGroup(Base, PokeApiResource):
         self.order = order
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
         if self.order != data.order:
             self.order = data.order
+
 
 # Base GameIndex table
 class GameIndex(Base):

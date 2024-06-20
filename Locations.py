@@ -1,6 +1,7 @@
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean
+import pandas as pd
 
 from Base import Base, TinyInteger, RegionToVersionGroupLink, PokeApiResource, get_next_id
 
@@ -9,7 +10,7 @@ if TYPE_CHECKING:
     from Evolution import EvolutionDetail
     from Games import Generation, Pokedex, VersionGroup, Version, LocationGameIndex
     from Pokemon import Pokemon, PokemonSpecies
-    from TextEntries import LocationName, LocationAreaName, PalParkAreaName
+    from TextEntries import LocationName, LocationAreaName, PalParkAreaName, RegionName
 
 class Location(Base, PokeApiResource):
     __tablename__ = "Location"
@@ -250,23 +251,39 @@ class PalParkEncounter(Base):
 class Region(Base, PokeApiResource):
     __tablename__ = "Region"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    generation_key: Mapped[Optional[int]] = mapped_column(Integer)
+    #generation_key: Mapped[Optional[int]] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(100))
 
     main_generation: Mapped["Generation"] = relationship(back_populates="main_region", cascade="save-update",
-                                                    primaryjoin="Region.generation_key == Generation.id",
-                                                    foreign_keys=generation_key)
+                                                    primaryjoin="Region.id == foreign(Generation.region_key)")#,
+                                                    #foreign_keys=generation_key)
     locations: Mapped[List["Location"]] = relationship(back_populates="region", cascade="save-update",
                                                        primaryjoin="Region.id == foreign(Location.region_key)")
     pokedexes: Mapped[List["Pokedex"]] = relationship(back_populates="region", cascade="save-update",
                                                       primaryjoin="Region.id == foreign(Pokedex.region_key)")
     version_groups: Mapped[List["VersionGroup"]] = relationship(back_populates="regions",secondary=RegionToVersionGroupLink, cascade="save-update")
 
-    _cache: Dict[int, "Region"] = {}
+    names: Mapped[List["RegionName"]] = relationship(back_populates="object_ref", cascade="save-update",
+                                                           primaryjoin="Region.id == foreign(RegionName.object_key)")
 
+    _cache: Dict[int, "Region"] = {}
+    _csv = "regions.csv"
+    relationship_attr_map = {}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Region_PokeApiId"),
     )
+
+    @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["Region"]:
+        regions = []
+        for id_, region_data in df.iterrows():
+            poke_api_id = id_
+            name = region_data.identifier
+            region = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[region.poke_api_id] = region
+            regions.append(region)
+        return regions
+
 
     @classmethod
     def parse_data(cls,data) -> "Region":
@@ -282,6 +299,13 @@ class Region(Base, PokeApiResource):
         self.poke_api_id = poke_api_id
         self.name = name
 
-    def compare(self, data):
+    """ def compare(self, data):
         if self.name != data.name:
-            self.name = data.name
+            self.name = data.name """
+
+    def compare(self, data: pd.Series) -> bool:
+        updated = False
+        if self.name != data.identifier:
+            self.name = data.identifier
+            updated = True
+        return updated

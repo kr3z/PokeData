@@ -48,6 +48,7 @@ class PokemonAbility(Base, PokeApiResource):
     )
 
     _cache: Dict[int, "PokemonAbility"] = {}
+    _csv = "abilities.csv"
     
     @classmethod
     def parse_data(cls,data) -> "PokemonAbility":
@@ -87,6 +88,7 @@ class PokemonCharacteristic(Base, PokeApiResource):
     )
 
     _cache: Dict[int, "PokemonCharacteristic"] = {}
+    _csv = "characteristics.csv"
     
     @classmethod
     def parse_data(cls,data) -> "PokemonCharacteristic":

@@ -1,3 +1,4 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, Boolean, UniqueConstraint
@@ -37,6 +38,7 @@ class Berry(Base, PokeApiResource):
                                                             primaryjoin="Berry.id == foreign(BerryFlavorLink.berry_key)")
     
     _cache: Dict[int, "Berry"] = {}
+    _csv = "berries.csv" # doesn't have name
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Berry_PokeApiId"),
@@ -127,19 +129,22 @@ class BerryFirmness(Base, PokeApiResource):
                                                             primaryjoin="BerryFirmness.id == foreign(BerryFirmnessName.object_key)")
     
     _cache: Dict[int, "BerryFirmness"] = {}
-
+    _csv = "berry_firmness.csv"
+    relationship_attr_map = {}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_BerryFirmness_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "BerryFirmness":
-        poke_api_id = data.id_
-        name = data.name
-
-        firmness = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[firmness.poke_api_id] = firmness
-        return firmness
+    def parse_csv(cls, df: pd.DataFrame) -> List["BerryFirmness"]:
+        firmnesses = []
+        for id_, firmness_data in df.iterrows():
+            poke_api_id = id_
+            name = firmness_data.identifier
+            firmness = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[firmness.poke_api_id] = firmness
+            firmnesses.append(firmness)
+        return firmnesses
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -147,8 +152,8 @@ class BerryFirmness(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class BerryFlavor(Base, PokeApiResource):
     __tablename__ = "BerryFlavor"
@@ -172,6 +177,7 @@ class BerryFlavor(Base, PokeApiResource):
                                                               primaryjoin="BerryFlavor.id == foreign(PokemonNature.likes_flavor_key)")
     
     _cache: Dict[int, "BerryFlavor"] = {}
+    _csv = "berry_flavors.csv" # missing data!
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_BerryFlavor_PokeApiId"),

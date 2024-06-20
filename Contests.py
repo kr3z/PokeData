@@ -25,6 +25,7 @@ class ContestType(Base, PokeApiResource):
                                                primaryjoin="ContestType.id == foreign(Move.contest_type_key)")
     
     _cache: Dict[int, "ContestType"] = {}
+    _csv = "contest_types.csv" # Uses identifier instead of name
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ContestType_PokeApiId"),
@@ -79,6 +80,7 @@ class ContestEffect(AbstractContestEffect):
     __mapper_args__ = {"polymorphic_identity": False}
 
     _cache: Dict[int, "ContestEffect"] = {}
+    _csv = "contest_effects.csv"
 
     @classmethod
     def parse_data(cls,data) -> "ContestEffect":
