@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, Table, Column, ForeignKey, SmallInteger
 
-from Base import Base, MoveLearnMethodToVersionGroupLink, RegionToVersionGroupLink, PokedexToVersionGroupLink, PokeApiResource, get_next_id, ManyToOneAttrs
+from Base import Base, MoveLearnMethodToVersionGroupLink, RegionToVersionGroupLink, PokedexToVersionGroupLink, PokeApiResource, get_next_id, ManyToOneAttrs, CSVData, CSVResource
 
 if TYPE_CHECKING:
     from TextEntries import PokedexDescription, PokedexName, GenerationName, VersionName
@@ -39,8 +39,9 @@ class Generation(Base, PokeApiResource):
     
     
     _cache: Dict[int, "Generation"] = {}
-    _csv = "generations.csv"
-    relationship_attr_map = {"main_region_id": ManyToOneAttrs("main_region","region_key")}
+    #_csv = "generations.csv"
+    #relationship_attr_map = {"main_region_id": ManyToOneAttrs("main_region","region_key")}
+    csv_data: CSVData = {"primary_csv": "generations.csv", "relationships": {"main_region_id": ManyToOneAttrs("main_region","region_key")}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Generation_PokeApiId"),
     )
@@ -71,11 +72,11 @@ class Generation(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        updated = False
+        #updated = False
         if self.name != data.identifier:
             self.name = data.identifier
-            updated = True
-        return updated
+            #updated = True
+        #return updated
 
 
 class Pokedex(Base, PokeApiResource):
@@ -99,19 +100,31 @@ class Pokedex(Base, PokeApiResource):
                                                       primaryjoin="Pokedex.id == foreign(PokedexDescription.object_key)")
     
     _cache: Dict[int, "Pokedex"] = {}
-
+    csv_data: CSVData = {"primary_csv": "pokedexes.csv", "relationships": {"region_id": ManyToOneAttrs("region","region_key")}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Pokedex_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["Pokedex"]:
+        pokedexs = []
+        for id_, pokedex_data in df.iterrows():
+            poke_api_id = id_
+            name = pokedex_data.identifier
+            is_main_series = pokedex_data.is_main_series
+            pokedex = cls(poke_api_id=poke_api_id, name=name, is_main_series=is_main_series)
+            cls._cache[pokedex.poke_api_id] = pokedex
+            pokedexs.append(pokedex)
+        return pokedexs
+    
+    """ @classmethod
     def parse_data(cls,data) -> "Pokedex":
         poke_api_id = data.id_
         name = data.name
         is_main_series = data.is_main_series
         pokedex = cls(poke_api_id=poke_api_id, name=name, is_main_series=is_main_series)
         cls._cache[pokedex.poke_api_id] = pokedex
-        return pokedex
+        return pokedex """
     
     def __init__(self, poke_api_id: int, name: str, is_main_series: bool):
         self.id = get_next_id()
@@ -120,8 +133,8 @@ class Pokedex(Base, PokeApiResource):
         self.is_main_series = is_main_series
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
         if self.is_main_series != data.is_main_series:
             self.is_main_series = data.is_main_series
 
@@ -172,8 +185,9 @@ class Version(Base, PokeApiResource):
                                                       primaryjoin="Version.id == foreign(VersionName.object_key)")
     
     _cache: Dict[int, "Version"] = {}
-    _csv = "versions.csv"
-    relationship_attr_map = {"version_group_id": ManyToOneAttrs("version_group","version_group_key")}
+    #_csv = "versions.csv"
+    #relationship_attr_map = {"version_group_id": ManyToOneAttrs("version_group","version_group_key")}
+    csv_data: CSVData = {"primary_csv": "versions.csv", "relationships": {"version_group_id": ManyToOneAttrs("version_group","version_group_key")}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Version_PokeApiId"),
     )
@@ -225,8 +239,9 @@ class VersionGroup(Base, PokeApiResource):
     pokedexes: Mapped[List["Pokedex"]] = relationship(back_populates="version_groups",secondary=PokedexToVersionGroupLink, cascade="save-update")
 
     _cache: Dict[int, "VersionGroup"] = {}
-    _csv = "version_groups.csv"
-    relationship_attr_map = {"generation_id": ManyToOneAttrs("generation","generation_key")}
+    #_csv = "version_groups.csv"
+    #relationship_attr_map = {"generation_id": ManyToOneAttrs("generation","generation_key")}
+    csv_data: CSVData = {"primary_csv": "version_groups.csv", "relationships": {"generation_id": ManyToOneAttrs("generation","generation_key")}}
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_VersionGroup_PokeApiId"),
@@ -269,19 +284,31 @@ class GameIndex(Base):
         "polymorphic_abstract": True
     }
 
-    def __init__(self, game_index: int):
+    def __init__(self, data):
         self.id = get_next_id()
-        self.game_index = game_index
+        #self.game_index = game_index
+        self.game_index = data.game_index
+
+    def compare(self, data) -> bool:
+        updated = False
+        if self.game_index != data.game_index:
+            self.game_index = data.game_index
+            updated = True
+        return updated
 
 # Abstract types
-class GenerationGameIndex(GameIndex):
+class GenerationGameIndex(GameIndex, CSVResource):
     generation_key: Mapped[int] = mapped_column(Integer, nullable=True)
     generation: Mapped["Generation"] = relationship(primaryjoin="GenerationGameIndex.generation_key == Generation.id",
                                                     foreign_keys=generation_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
+    relationship_attr_map = {"generation_id": ManyToOneAttrs("generation","generation_key")}
 
-    def __init__(self, game_index: int):
-        super().__init__(game_index)
+    def __init__(self, data):
+        super().__init__(data)
+
+    def get_unique_key(self):
+        return str(self.generation.poke_api_id)
 
 class VersionGameIndex(GameIndex):
     version_key: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -289,8 +316,11 @@ class VersionGameIndex(GameIndex):
                                               foreign_keys=version_key, cascade="save-update")
     __mapper_args__ = {"polymorphic_abstract": True}
 
-    def __init__(self, game_index: int):
-        super().__init__(game_index)
+    def __init__(self, data):
+        super().__init__(data)
+
+    def get_unique_key(self):
+        return str(self.version.poke_api_id)
 
 
 class ItemGameIndex(GenerationGameIndex):
@@ -300,8 +330,12 @@ class ItemGameIndex(GenerationGameIndex):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "Item"}
 
-    def __init__(self, game_index: int):
-        super().__init__(game_index)
+    def __init__(self, data):
+        super().__init__(data)
+
+    def get_unique_key(self):
+        unique_key = super().get_unique_key()
+        return unique_key + ":" + str(self.object_ref.poke_api_id)  
 
 class LocationGameIndex(GenerationGameIndex):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -309,9 +343,16 @@ class LocationGameIndex(GenerationGameIndex):
                                             primaryjoin="Location.id == LocationGameIndex.object_key",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "Location"}
+    relationship_attr_map = dict(GenerationGameIndex.relationship_attr_map)
+    relationship_attr_map.update({"location_id": ManyToOneAttrs("object_ref","object_key")})
+    csv_data: CSVData = {"primary_csv": "location_game_indices.csv", "relationships": relationship_attr_map}
 
-    def __init__(self, game_index: int):
-        super().__init__(game_index)
+    def __init__(self, data):
+        super().__init__(data)
+
+    def get_unique_key(self):
+        unique_key = super().get_unique_key()
+        return unique_key + ":" + str(self.object_ref.poke_api_id) 
 
 class PokemonGameIndex(VersionGameIndex):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -320,8 +361,12 @@ class PokemonGameIndex(VersionGameIndex):
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "Pokemon"}
 
-    def __init__(self, game_index: int):
-        super().__init__(game_index)
+    def __init__(self, data):
+        super().__init__(data)
+
+    def get_unique_key(self):
+        unique_key = super().get_unique_key()
+        return unique_key + ":" + str(self.object_ref.poke_api_id) 
 
 class TypeGameIndex(GenerationGameIndex):
     object_key: Mapped[int] = mapped_column(Integer,use_existing_column=True)
@@ -329,6 +374,13 @@ class TypeGameIndex(GenerationGameIndex):
                                             primaryjoin="PokemonType.id == TypeGameIndex.object_key",
                                             foreign_keys=object_key)
     __mapper_args__ = {"polymorphic_identity": "PokemonType"}
+    relationship_attr_map = dict(GenerationGameIndex.relationship_attr_map)
+    relationship_attr_map.update({"type_id": ManyToOneAttrs("object_ref","object_key")})
+    csv_data: CSVData = {"primary_csv": "type_game_indices.csv", "relationships": relationship_attr_map}
     
-    def __init__(self, game_index: int):
-        super().__init__(game_index)
+    def __init__(self, data):
+        super().__init__(data)
+
+    def get_unique_key(self):
+        unique_key = super().get_unique_key()
+        return unique_key + ":" + str(self.object_ref.poke_api_id) 

@@ -2,8 +2,10 @@ import os
 import logging
 import logging.config
 import configparser
+from enum import Enum
 from collections import namedtuple
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, TypedDict, Dict
 
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Mapped, mapped_column
 from sqlalchemy import create_engine, Sequence, URL, event, text, String, Integer, SmallInteger, Table, Column, ForeignKey, select
@@ -31,7 +33,8 @@ sqlalchemy_url = URL.create(
     database=db_name,
 )
 
-utf8mb4_2500 = String(1000).with_variant(mysql.VARCHAR(2500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
+utf8mb4_2500 = String(2500).with_variant(mysql.VARCHAR(2500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
+utf8mb4_5000 = String(5000).with_variant(mysql.VARCHAR(5000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_1000 = String(1000).with_variant(mysql.VARCHAR(1000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_200 = String(200).with_variant(mysql.VARCHAR(200,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_50 = String(50).with_variant(mysql.VARCHAR(50,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
@@ -40,6 +43,37 @@ TinyInteger = SmallInteger().with_variant(mysql.TINYINT, 'mysql','mariadb')
 MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb') 
 
 ManyToOneAttrs = namedtuple('ManyToOneAttrs', ['ref', 'key'])
+
+class FilterOperation(Enum):
+    GREATERTHAN = 1
+    LESSTHAN = 2
+    EQUAL = 3
+
+""" @dataclass(frozen=True)
+class RenameColumn:
+    from_column: str
+    to_column: str """
+
+@dataclass(frozen=True)
+class FilterCSV:
+    column_name: str
+    operation: FilterOperation
+    value: int
+
+@dataclass(frozen=True)
+class MergeCSV:
+    csv: str
+    merge_column: str
+    rename_columns: Optional[Dict[str,str]] # Dict[from,to]
+    filter: Optional[FilterCSV]
+
+@dataclass(frozen=True)
+class CSVData():
+    primary_csv: str
+    relationships: Dict[str,Tuple[str,str]]
+    #secondary_csvs: Optional[Dict[str,str]] # Dict[csv_name, join_key]
+    merge_csvs: Optional[List[MergeCSV]]
+
 
 class Base(DeclarativeBase):
     pass
@@ -131,7 +165,10 @@ SuperContestComboLink = Table(
     Column("follow_up_move_key", ForeignKey("Move.id"), primary_key=True),
 )
 
-class PokeApiResource:
+class CSVResource:
+    csv_data: CSVData
+
+class PokeApiResource(CSVResource):
     poke_api_id: Mapped[int] = mapped_column(Integer)
 
     @classmethod

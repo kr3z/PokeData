@@ -4,12 +4,12 @@ import numpy as np
 from typing import Type, Dict, List
 from sqlalchemy import select, inspect, delete
 
-from Base import Session, PokeApiResource, WORKING_DIR, ManyToOneAttrs
-from Berries import Berry, BerryFlavor, BerryFlavorLink, BerryFirmness
+from Base import Session, PokeApiResource, WORKING_DIR, ManyToOneAttrs, CSVResource, FilterOperation
+from Berries import Berry, BerryFlavor, BerryFirmness
 from Contests import ContestType, ContestEffect, SuperContestEffect
 from Evolution import EvolutionChain, ChainLink, EvolutionDetail, EvolutionTrigger
 from Encounters import Encounter, EncounterMethod, EncounterCondition, EncounterConditionValue
-from Games import Generation, GenerationGameIndex, VersionGroup, Pokedex, VersionGameIndex, Version, PokedexEntry
+from Games import Generation, GenerationGameIndex, VersionGroup, Pokedex, VersionGameIndex, Version, PokedexEntry, GameIndex
 from Items import Item, ItemAttribute, ItemCategory, ItemFlingEffect, ItemPocket
 from Locations import Region, Location, PalParkEncounter, PalParkArea, PokemonEncounter, LocationArea, EncounterMethodRate
 from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle, DamageClass, MoveTarget, MoveCategory, MoveStatChange, PastMoveStatValues, MoveAilment
@@ -25,6 +25,9 @@ languages_df = languages_df.replace({np.nan: None})
 
 regions_df = pd.read_csv(CSV_DIR+'regions.csv', index_col='id')
 regions_df = regions_df.replace({np.nan: None}) """
+
+### !!! Need to check move flags, doesn't seem to exist in the API, but does in csv
+
 
 ### Process Order:
 ### Load Language first as all TextEntry types will depend on it
@@ -42,13 +45,118 @@ regions_df = regions_df.replace({np.nan: None}) """
 ### After that we can load any types without links
 ### Or that only link to Region/Generation/VersionGroup/Version
 # BerryFirmness
+# ContestType ContestName BerryFlavorName
+# ContestEffect ContestEffectEffect ContestEffectFlavorText
+# SuperContestEffect SuperContestEffectFlavorText
+# ItemAttribute ItemAttributeName ItemAttributeDescription
+# ItemFlingEffect ItemFlingEffectEffect
+# ItemPocket ItemPocketName
+# Location LocationName (depends on Region)
+# PalParkArea PalParkAreaName
+# MoveEffect MoveEffectEffect
+# MoveAilment MoveAilmentName
+# MoveBattleStyle MoveBattleStyleName
+# MoveCategory MoveCategoryDescription
+# DamageClass DamageClassName DamageClassDescription
+# MoveLearnMethod (pokemon_move_methods.csv) MoveLearnMethodName MoveLearnMethodDescription
+# MoveTarget MoveTargetName MoveTargetDescription
+# PokeathlonStat PokeathlonStatName
+# PokemonColor PokemonColorName
+# PokemonHabitat PokemonHabitatName
+# PokemonShape PokemonShapeName PokemonShapeAwesomName PokemonShapeDescription
 
-# ContestType ContestName
+# Pokedex PokedexName PokedexDescription # Region
+# PokemonType PokemonTypeName # Generation/DamageClass
+# PokemonTypeRelation # PokemonType/Generation
+# PokemonStat PokemonStatName # Depends on DamageClass
 
+# LocationArea LocationAreaName # depends on location
+
+# MoveEffectChange MoveEffectChangeText # Depends on MoveEffect
+# Move MoveName # Depends on Generation/Type/MoveEffect/MoveTarget/DamageClass/ContestType/ContestEffect/SuperContestEffect
+
+## PastMoveStatValues depends on Move/VersionGroup/Type and is not APIResource
+## MoveStatChange depends on Move/Stat and is not APIResource
+
+# BerryFlavor # Berry ContestType
+
+# EncounterMethodRate # depends on LocationArea/EncounterMethod/Version
+
+### Process Game Index Types:
+# TypeGameIndex # depends on Type/Generation
+# LocationGameIndex # depends on Location/Generation
+
+
+def process_nonapi_csv(T: Type[CSVResource]):
+    type_name = T.__tablename__
+    CSV = CSV_DIR + T.csv_data['primary_csv']
+    logger.debug("Process non-api CSV file for %s at location: %s", type_name, CSV)
+    df = pd.read_csv(CSV)
+    if T.csv_data.get("concat_csvs"):
+        for csv_file in T.csv_data.get("concat_csvs"):
+            df2 = pd.read_csv(CSV_DIR + csv_file)
+            #df2.rename(columns={merge_column: 'id'}, inplace=True)
+            df = pd.concat([df, df2], ignore_index=True, sort=False)
+            #df.set_index('id', inplace=True)
+    df = df.replace({np.nan: None})
+
+    with Session() as session:
+        existing_entries = session.scalars(select(T)).all()
+        existing_entry_map: Dict[str, CSVResource] = { existing_entry.get_unique_key(): existing_entry for existing_entry in existing_entries}
+    if len(existing_entry_map) > 0:
+        logger.debug("Process %s: Found %s existing entries for %s", type_name, len(existing_entry_map), type_name)
+    
+    idx_to_keys: Dict[int, str] = {}
+    for idx,row_data in df.iterrows():
+        unique_key = ":".join([str(int(row_data[attr_name])) if isinstance(row_data[attr_name],float) else str(row_data[attr_name]) for attr_name in T.csv_data['relationships'].keys()])
+        idx_to_keys[idx] = unique_key
+
+    new_idxs = []
+    #updated_entries = []
+    update_entries_map: Dict[CSVResource, pd.Series] = {}
+    for idx, unique_key in idx_to_keys.items():
+        existing_entry = existing_entry_map.pop(unique_key, None)
+        if existing_entry:
+            """ if existing_entry.compare(df.loc[idx]):
+                updated_entries.append(existing_entry) """
+            update_entries_map[existing_entry] = df.loc[idx]
+        else:
+            logger.debug("Process %s: Parsing new entry: %s", type_name, unique_key)
+            new_idxs.append(idx)
+
+    with Session() as session:
+        for existing_object, object_data in update_entries_map.items():
+            existing_object = session.merge(existing_object)
+            #object_data = df.loc[api_object.poke_api_id]
+            existing_object.compare(object_data)
+            logger.debug("Process %s: Parsing ManyToOnes for existing object: %s", type_name, existing_object)
+            process_many_to_one(existing_object, object_data)
+            session.flush()
+        session.commit()
+
+    with Session() as session:
+        for idx,entry_data in df.loc[new_idxs].iterrows():
+            new_object: CSVResource = T(entry_data)
+            logger.debug("Process %s: Parsing ManyToOnes for new object: %s", type_name, new_object)
+            process_many_to_one(new_object, entry_data)
+            new_object = session.merge(new_object)
+
+        session.flush()
+        """for updated_entry in updated_entries:
+            updated_entry = session.merge(updated_entry)
+        session.flush() """
+
+        if len(existing_entry_map) > 0:
+            logger.debug("Process %s: Found %s existing entries to be deleted for %s", type_name, len(existing_entry_map), type_name)
+            for entry_to_delete in existing_entry_map:
+                logger.debug("Process %s: Deleting entry: %s", type_name, entry_to_delete)
+            ids_to_delete: List[int] = [ delete_entry.id for delete_entry in existing_entry_map.values() ]
+            session.execute(delete(T).where(T.id.in_(ids_to_delete)))
+        session.commit()
 
 def process_text_entry_csv(T: Type[TextEntry]):
     type_name = T.__tablename__
-    CSV = CSV_DIR + T._csv
+    CSV = CSV_DIR + T.csv_data['primary_csv']
     logger.debug("Process text entry CSV file for %s at location: %s", type_name, CSV)
     df = pd.read_csv(CSV)
     df = df.replace({np.nan: None})
@@ -61,7 +169,7 @@ def process_text_entry_csv(T: Type[TextEntry]):
     #idx_to_text_keys: Dict[int, str] = T.build_text_keys(df)
     idx_to_text_keys: Dict[int, str] = {}
     for idx,row_data in df.iterrows():
-        text_key = ":".join([str(row_data[attr_name]) for attr_name in T.relationship_attr_map.keys()])
+        text_key = ":".join([str(row_data[attr_name]) for attr_name in T.csv_data['relationships'].keys()])
         idx_to_text_keys[idx] = text_key
     new_idxs = []
     updated_entries = []
@@ -101,15 +209,40 @@ def process_text_entry_csv(T: Type[TextEntry]):
             text_ids_to_delete: List[int] = [ text_entry.id for text_entry in text_entry_map.values() ]
             session.execute(delete(T).where(T.id.in_(text_ids_to_delete)))
         session.commit()
+
+#def process_game_index_csv(T: Type[GameIndex]):
+
             
 
 def process_csv(T: Type[PokeApiResource]):
     type_name = T.__tablename__
-    CSV = CSV_DIR + T._csv
+    CSV = CSV_DIR + T.csv_data['primary_csv']
     logger.debug("Process CSV file for %s at location: %s", type_name, CSV)
     new_pokeapi_ids = []
     objects_to_update = []
     df = pd.read_csv(CSV, index_col='id')
+    #if T.csv_data.get("merge_csvs"):
+    for merge_csv in T.csv_data.merge_csvs:
+        #for csv_file, merge_column in T.csv_data.get("merge_csvs").items():
+            df2 = pd.read_csv(CSV_DIR + merge_csv.csv)
+            if merge_csv.filter:
+                filter = merge_csv.filter
+                filter_att = getattr(df2, filter.column_name)
+                if filter.operation == FilterOperation.GREATERTHAN:
+                    df2 = df2[filter_att > filter.value]
+                elif filter.operation == FilterOperation.LESSTHAN:
+                    df2 = df2[filter_att < filter.value]
+                elif filter.operation == FilterOperation.EQUAL:
+                    df2 = df2[filter_att == filter.value]
+
+            rename_cols = {merge_csv.merge_column: 'id'}
+            if merge_csv.rename_columns:
+                rename_cols.update(merge_csv.rename_columns)
+            df2.rename(columns=rename_cols, inplace=True)
+
+            df = pd.merge(df, df2, how="left", on="id")
+            df.set_index('id', inplace=True)
+            
     df = df.replace({np.nan: None})
     for pokeapi_id in df.index.to_list():
         api_object, needs_update = T.get_from_cache(pokeapi_id)
@@ -130,18 +263,21 @@ def process_csv(T: Type[PokeApiResource]):
             #df.drop(api_object.poke_api_id, inplace=True)
         session.commit()
 
-        new_objects = T.parse_csv(df.loc[new_pokeapi_ids])
+    new_objects = T.parse_csv(df.loc[new_pokeapi_ids])
     with Session() as session:
         for new_object in new_objects:
             process_many_to_one(new_object, df.loc[new_object.poke_api_id])
             new_object = session.merge(new_object)
         session.commit()
 
-def process_many_to_one(object, data):
+def process_many_to_one(object: CSVResource, data):
     ins = inspect(object)
-    for data_attr_name,object_attr_names  in object.relationship_attr_map.items():
+    for data_attr_name,object_attr_names  in object.csv_data['relationships'].items(): #object.relationship_attr_map.items():
         logger.debug("process_many_to_one: process: %s for %s", data_attr_name, object_attr_names)
         data_id = data[data_attr_name]
+        if data_id is None:
+            # assume this is a nullable attribute
+            continue
         object_class = getattr(ins.mapper.relationships,object_attr_names.ref).mapper.class_
         object_ref, _ = object_class.get_from_cache(data_id)
         logger.debug("process_many_to_one: object_ref: %s", object_ref)

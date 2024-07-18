@@ -1,13 +1,15 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, Boolean, UniqueConstraint
 
-from Base import Base, TinyInteger, get_next_id, PokeApiResource
+from Base import Base, TinyInteger, get_next_id, PokeApiResource, CSVData
 
 if TYPE_CHECKING:
     from Berries import BerryFlavor
     from Moves import Move
-    from TextEntries import ContestName, ContestEffectEffect, ContestEffectFlavorText, SuperContestEffectFlavorText
+    from Pokemon import PokemonNature
+    from TextEntries import ContestName, ContestEffectEffect, ContestEffectFlavorText, SuperContestEffectFlavorText, BerryFlavorName
 
 class ContestType(Base, PokeApiResource):
     __tablename__ = "ContestType"
@@ -24,21 +26,41 @@ class ContestType(Base, PokeApiResource):
     moves: Mapped[List["Move"]] = relationship(back_populates="contest_type", cascade="save-update",
                                                primaryjoin="ContestType.id == foreign(Move.contest_type_key)")
     
-    _cache: Dict[int, "ContestType"] = {}
-    _csv = "contest_types.csv" # Uses identifier instead of name
+    # Moved these from BerryFlavor
+    names: Mapped[List["BerryFlavorName"]] = relationship(back_populates="object_ref", cascade="save-update",
+                                                            primaryjoin="ContestType.id == foreign(BerryFlavorName.object_key)")
 
+    hates_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="hates_flavor", cascade="save-update",
+                                                              primaryjoin="ContestType.id == foreign(PokemonNature.hates_flavor_key)")
+    likes_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="likes_flavor", cascade="save-update",
+                                                              primaryjoin="ContestType.id == foreign(PokemonNature.likes_flavor_key)")
+    
+    _cache: Dict[int, "ContestType"] = {}
+    #_csv = "contest_types.csv" # Uses identifier instead of name
+    csv_data: CSVData = {"primary_csv": "contest_types.csv", "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ContestType_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["ContestType"]:
+        types_ = []
+        for id_, type_data in df.iterrows():
+            poke_api_id = id_
+            name = type_data.identifier
+            type_ = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[type_.poke_api_id] = type_
+            types_.append(type_)
+        return types_
+
+    """ @classmethod
     def parse_data(cls,data) -> "ContestType":
         poke_api_id = data.id_
         name = data.name
 
         contest = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[contest.poke_api_id] = contest
-        return contest
+        return contest """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -46,8 +68,8 @@ class ContestType(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class AbstractContestEffect(Base, PokeApiResource):
     __tablename__ = "ContestEffect"
@@ -80,9 +102,22 @@ class ContestEffect(AbstractContestEffect):
     __mapper_args__ = {"polymorphic_identity": False}
 
     _cache: Dict[int, "ContestEffect"] = {}
-    _csv = "contest_effects.csv"
+    #_csv = "contest_effects.csv"
+    csv_data: CSVData = {"primary_csv": "contest_effects.csv", "relationships": {}}
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["ContestEffect"]:
+        effects = []
+        for id_, effect_data in df.iterrows():
+            poke_api_id = id_
+            appeal = effect_data.appeal
+            jam = effect_data.jam
+            effect = cls(poke_api_id=poke_api_id, appeal=appeal, jam=jam)
+            cls._cache[effect.poke_api_id] = effect
+            effects.append(effect)
+        return effects
+    
+    """ @classmethod
     def parse_data(cls,data) -> "ContestEffect":
         poke_api_id = data.id_
         appeal = data.appeal
@@ -90,7 +125,7 @@ class ContestEffect(AbstractContestEffect):
 
         effect = cls(poke_api_id=poke_api_id, appeal=appeal, jam=jam)
         cls._cache[effect.poke_api_id] = effect
-        return effect
+        return effect """
     
     def __init__(self, poke_api_id: int, appeal: int, jam: int):
         super().__init__(appeal)
@@ -112,15 +147,27 @@ class SuperContestEffect(AbstractContestEffect):
     __mapper_args__ = {"polymorphic_identity": True}
 
     _cache: Dict[int, "SuperContestEffect"] = {}
+    csv_data: CSVData = {"primary_csv": "super_contest_effects.csv", "relationships": {}}
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["SuperContestEffect"]:
+        effects = []
+        for id_, effect_data in df.iterrows():
+            poke_api_id = id_
+            appeal = effect_data.appeal
+            effect = cls(poke_api_id=poke_api_id, appeal=appeal)
+            cls._cache[effect.poke_api_id] = effect
+            effects.append(effect)
+        return effects
+    
+    """ @classmethod
     def parse_data(cls,data) -> "SuperContestEffect":
         poke_api_id = data.id_
         appeal = data.appeal
 
         effect = cls(poke_api_id=poke_api_id, appeal=appeal)
         cls._cache[effect.poke_api_id] = effect
-        return effect
+        return effect """
     
     def __init__(self, poke_api_id: int, appeal: int):
         super().__init__(appeal)

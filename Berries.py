@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, Boolean, UniqueConstraint
 
-from Base import Base, TinyInteger, get_next_id, PokeApiResource
+from Base import Base, TinyInteger, get_next_id, PokeApiResource, CSVData, CSVResource
 
 if TYPE_CHECKING:
     from Contests import ContestType
@@ -34,8 +34,10 @@ class Berry(Base, PokeApiResource):
     natural_gift_type: Mapped["PokemonType"] = relationship(primaryjoin="Berry.natural_gift_type_key == PokemonType.id",
                                                             foreign_keys=natural_gift_type_key, cascade="save-update",)
 
-    flavors: Mapped[List["BerryFlavorLink"]] = relationship(back_populates="berry", cascade="save-update",
-                                                            primaryjoin="Berry.id == foreign(BerryFlavorLink.berry_key)")
+    #flavors: Mapped[List["BerryFlavorLink"]] = relationship(back_populates="berry", cascade="save-update",
+    #                                                       primaryjoin="Berry.id == foreign(BerryFlavorLink.berry_key)")
+    flavor_map: Mapped[List["BerryFlavor"]] = relationship(back_populates="berry", cascade="save-update",
+                                                           primaryjoin="Berry.id == foreign(BerryFlavor.berry_key)")
     
     _cache: Dict[int, "Berry"] = {}
     _csv = "berries.csv" # doesn't have name
@@ -88,7 +90,9 @@ class Berry(Base, PokeApiResource):
         if self.soil_dryness != data.soil_dryness:
             self.soil_dryness = data.soil_dryness
 
-class BerryFlavorLink(Base):
+# This shouldn't be needed
+# BerryFlavor can just be the link table
+""" class BerryFlavorLink(Base):
     __tablename__ = "BerryFlavorLink"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     potency: Mapped[int] = mapped_column(TinyInteger)
@@ -116,7 +120,7 @@ class BerryFlavorLink(Base):
 
     def compare(self, data):
         if self.potency != data.potency:
-            self.potency = data.potency
+            self.potency = data.potency """
 
 class BerryFirmness(Base, PokeApiResource):
     __tablename__ = "BerryFirmness"
@@ -129,8 +133,9 @@ class BerryFirmness(Base, PokeApiResource):
                                                             primaryjoin="BerryFirmness.id == foreign(BerryFirmnessName.object_key)")
     
     _cache: Dict[int, "BerryFirmness"] = {}
-    _csv = "berry_firmness.csv"
-    relationship_attr_map = {}
+    #_csv = "berry_firmness.csv"
+    #relationship_attr_map = {}
+    csv_data: CSVData = {"primary_csv": "berry_firmness.csv", "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_BerryFirmness_PokeApiId"),
     )
@@ -155,48 +160,79 @@ class BerryFirmness(Base, PokeApiResource):
         if self.name != data.identifier:
             self.name = data.identifier
 
-class BerryFlavor(Base, PokeApiResource):
+#class BerryFlavor(Base, PokeApiResource):
+class BerryFlavor(Base, CSVResource):
     __tablename__ = "BerryFlavor"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
+    #name: Mapped[str] = mapped_column(String(100))
+    flavor: Mapped[int] = mapped_column(TinyInteger)
     contest_type_key: Mapped[int] = mapped_column(Integer)
+    berry_id: Mapped[int] = mapped_column(Integer)
 
-    contest_type: Mapped["ContestType"] = relationship(back_populates="berry_flavor",
+    contest_type: Mapped["ContestType"] = relationship(back_populates="berry_flavor", cascade="save-update",
                                                        primaryjoin="BerryFlavor.contest_type_key == ContestType.id",
                                                        foreign_keys=contest_type_key)
 
-    berries: Mapped[List["BerryFlavorLink"]] = relationship(back_populates="flavor",
-                                                            primaryjoin="BerryFlavor.id == foreign(BerryFlavorLink.flavor_key)")
+    #berries: Mapped[List["BerryFlavorLink"]] = relationship(back_populates="flavor",
+    #                                                        primaryjoin="BerryFlavor.id == foreign(BerryFlavorLink.flavor_key)")
     
-    names: Mapped[List["BerryFlavorName"]] = relationship(back_populates="object_ref", cascade="save-update",
+    berry: Mapped["Berry"] = relationship(back_populates="flavor_map",  cascade="save-update",
+                                          primaryjoin="BerryFlavor.berry_id == Berry.id", foreign_keys=berry_id)
+    
+    # These three relationships need to be moved to contest type
+    """ names: Mapped[List["BerryFlavorName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                             primaryjoin="BerryFlavor.id == foreign(BerryFlavorName.object_key)")
 
     hates_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="hates_flavor", cascade="save-update",
                                                               primaryjoin="BerryFlavor.id == foreign(PokemonNature.hates_flavor_key)")
     likes_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="likes_flavor", cascade="save-update",
-                                                              primaryjoin="BerryFlavor.id == foreign(PokemonNature.likes_flavor_key)")
+                                                              primaryjoin="BerryFlavor.id == foreign(PokemonNature.likes_flavor_key)") """
     
     _cache: Dict[int, "BerryFlavor"] = {}
     _csv = "berry_flavors.csv" # missing data!
 
     __table_args__ = (
-        UniqueConstraint("poke_api_id",name="ux_BerryFlavor_PokeApiId"),
+        #UniqueConstraint("poke_api_id",name="ux_BerryFlavor_PokeApiId"),
+        UniqueConstraint("berry_id","contest_type_key",name="ux_BerryFlavor_Berry_Contest"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["BerryFlavor"]:
+        flavors = []
+        for id_, flavor_data in df.iterrows():
+            #poke_api_id = id_
+            #name = flavor_data.identifier
+            flavor = flavor_data.flavor
+            flavor = cls(flavor=flavor)
+            #cls._cache[flavor.poke_api_id] = flavor
+            flavors.append(flavor)
+        return flavors
+
+    """ @classmethod
     def parse_data(cls,data) -> "BerryFlavor":
         poke_api_id = data.id_
         name = data.name
 
         flavor = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[flavor.poke_api_id] = flavor
-        return flavor
+        return flavor """
     
-    def __init__(self, poke_api_id: int, name: str):
+    """ def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
-        self.name = name
+        self.name = name """
 
-    def compare(self, data):
+    def __init__(self, flavor: int):
+        self.id = get_next_id()
+        self.flavor = flavor
+
+    """ def compare(self, data):
         if self.name != data.name:
-            self.name = data.name
+            self.name = data.name """
+    
+    def compare(self, data):
+        if self.flavor != data.flavor:
+            self.flavor = data.flavor
+
+    def get_unique_key(self) -> str:
+        return str(self.berry.poke_api_id) + ":" + str(self.contest_type.poke_api_id)

@@ -1,11 +1,13 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, select
+from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, select, SmallInteger
 
-from Base import Base, TinyInteger, Session, get_next_id, PokeApiResource
+from Base import Base, TinyInteger, Session, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, MergeCSV, FilterCSV, FilterOperation
 
 if TYPE_CHECKING:
-    from Berries import BerryFlavor
+    #from Berries import BerryFlavor
+    from Contests import ContestType
     from Evolution import EvolutionChain, EvolutionDetail
     from Games import Generation, PokedexEntry, Version, VersionGroup, PokemonGameIndex, TypeGameIndex
     from Items import Item
@@ -15,7 +17,7 @@ if TYPE_CHECKING:
     from TextEntries import PokemonName, PokemonSpeciesFlavorText, PokemonFormDescription, PokemonTypeName
     from TextEntries import PokemonStatName, PokemonNatureName, PokemonAbilityName, EggGroupName
     from TextEntries import GrowthRateDescription, PokemonColorName, PokemonFormName, PokemonFormFormName
-    from TextEntries import PokemonHabitatName, PokemonShapeAwesomeName, PokemonShapeName, PokemonGenus, PokeathlonStatName
+    from TextEntries import PokemonHabitatName, PokemonShapeAwesomeName, PokemonShapeName, PokemonGenus, PokeathlonStatName, PokemonShapeDescription
 
 class PokemonAbility(Base, PokeApiResource):
     __tablename__ = "PokemonAbility"
@@ -249,6 +251,7 @@ class PokemonNature(Base, PokeApiResource):
     likes_flavor_key: Mapped[int] = mapped_column(Integer)
     max_pokeathlon_increase: Mapped[int] = mapped_column(Integer)
     max_pokeathlon_decrease: Mapped[int] = mapped_column(Integer)
+    game_index: Mapped[int] = mapped_column(TinyInteger)
 
     decreased_stat: Mapped["PokemonStat"] = relationship(back_populates="decreasing_natures", cascade="save-update",
                                             primaryjoin="PokemonStat.id == PokemonNature.decreased_stat_key",
@@ -262,11 +265,11 @@ class PokemonNature(Base, PokeApiResource):
     increased_pokeathlon_stat: Mapped["PokeathlonStat"] = relationship(back_populates="increasing_natures", cascade="save-update",
                                             primaryjoin="PokeathlonStat.id == PokemonNature.increased_pokeathlon_stat_key",
                                             foreign_keys=increased_pokeathlon_stat_key)
-    hates_flavor: Mapped["BerryFlavor"] = relationship(back_populates="hates_natures", cascade="save-update",
-                                            primaryjoin="BerryFlavor.id == PokemonNature.hates_flavor_key",
+    hates_flavor: Mapped["ContestType"] = relationship(back_populates="hates_natures", cascade="save-update",
+                                            primaryjoin="ContestType.id == PokemonNature.hates_flavor_key",
                                             foreign_keys=hates_flavor_key)
-    likes_flavor: Mapped["BerryFlavor"] = relationship(back_populates="likes_natures", cascade="save-update",
-                                            primaryjoin="BerryFlavor.id == PokemonNature.likes_flavor_key",
+    likes_flavor: Mapped["ContestType"] = relationship(back_populates="likes_natures", cascade="save-update",
+                                            primaryjoin="ContestType.id == PokemonNature.likes_flavor_key",
                                             foreign_keys=likes_flavor_key)
 
     #pokeathlon_stat_changes # I don't think this is needed, with the stat changes included in this class
@@ -278,27 +281,68 @@ class PokemonNature(Base, PokeApiResource):
     
     _cache: Dict[int, "PokemonNature"] = {}
 
+    csv_data: CSVData = CSVData(**{"primary_csv": "natures.csv", 
+                        "relationships": {
+                            "decreased_stat_id": ManyToOneAttrs("decreased_stat","decreased_stat_key"),
+                            "increased_stat_id": ManyToOneAttrs("increased_stat","increased_stat_key"),
+                            "hates_flavor_id": ManyToOneAttrs("hates_flavor","hates_flavor_key"),
+                            "likes_flavor_id": ManyToOneAttrs("likes_flavor","likes_flavor_key"),
+                            "decreased_pokeathlon_stat_id": ManyToOneAttrs("decreased_pokeathlon_stat", "decreased_pokeathlon_stat_key"),
+                            "increased_pokeathlon_stat_id": ManyToOneAttrs("increased_pokeathlon_stat","increased_pokeathlon_stat_key")},
+                        "merge_csvs": [MergeCSV("nature_pokeathlon_stats.csv", "nature_id", 
+                                                rename_columns={"pokeathlon_stat_id": "decreased_pokeathlon_stat_id", 
+                                                                "max_change": "max_pokeathlon_decrease"},
+                                                filter=FilterCSV("max_change", FilterOperation.LESSTHAN, 0)),
+                                        MergeCSV("nature_pokeathlon_stats.csv", "nature_id", 
+                                                rename_columns={"pokeathlon_stat_id": "increased_pokeathlon_stat_id", 
+                                                                "max_change": "max_pokeathlon_increase"},
+                                                filter=FilterCSV("max_change", FilterOperation.GREATERTHAN, 0))]})
+
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokemonNature_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonNature"]:
+        natures = []
+        for id_, nature_data in df.iterrows():
+            poke_api_id = id_
+            name = nature_data.identifier
+            game_index = nature_data.game_index
+            max_pokeathlon_decrease = nature_data.max_pokeathlon_decrease
+            max_pokeathlon_increase = nature_data.max_pokeathlon_increase
+
+            nature = cls(poke_api_id=poke_api_id, name=name, game_index=game_index, max_pokeathlon_decrease=max_pokeathlon_decrease, max_pokeathlon_increase=max_pokeathlon_increase)
+            cls._cache[nature.poke_api_id] = nature
+            natures.append(nature)
+        return natures
+
+    """ @classmethod
     def parse_data(cls,data) -> "PokemonNature":
         poke_api_id = data.id_
         name = data.name
 
         nature = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[nature.poke_api_id] = nature
-        return nature
+        return nature """
     
-    def __init__(self, poke_api_id: int, name: str):
+    def __init__(self, poke_api_id: int, name: str, game_index: int, max_pokeathlon_decrease: int, max_pokeathlon_increase: int):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
         self.name = name
+        self.game_index = game_index
+        self.max_pokeathlon_decrease = max_pokeathlon_decrease
+        self.max_pokeathlon_increase = max_pokeathlon_increase
 
     def compare(self, data):
         if self.name != data.name:
             self.name = data.name
+        if self.game_index != data.game_index:
+            self.game_index = data.game_index
+        if self.max_pokeathlon_decrease != data.max_pokeathlon_decrease:
+            self.max_pokeathlon_decrease = data.max_pokeathlon_decrease
+        if self.max_pokeathlon_increase != data.max_pokeathlon_increase:
+            self.max_pokeathlon_increase = data.max_pokeathlon_increase
 
 class MoveBattleStylePreference(Base):
     __tablename__ = "MoveBattleStylePreference"
@@ -355,19 +399,31 @@ class PokeathlonStat(Base, PokeApiResource):
                                                           primaryjoin="PokeathlonStat.id == foreign(PokeathlonStatName.object_key)")
     
     _cache: Dict[int, "PokeathlonStat"] = {}
-
+    csv_data: CSVData = {"primary_csv": "pokeathlon_stats.csv", 
+                         "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokeathlonStat_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokeathlonStat"]:
+        stats = []
+        for id_, stat_data in df.iterrows():
+            poke_api_id = id_
+            name = stat_data.identifier
+            stat = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[stat.poke_api_id] = stat
+            stats.append(stat)
+        return stats
+    
+    """ @classmethod
     def parse_data(cls,data) -> "PokeathlonStat":
         poke_api_id = data.id_
         name = data.name
 
         stat = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[stat.poke_api_id] = stat
-        return stat
+        return stat """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -375,8 +431,8 @@ class PokeathlonStat(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 
 class Pokemon(Base, PokeApiResource):
@@ -592,16 +648,28 @@ class PokemonColor(Base, PokeApiResource):
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokemonColor_PokeApiId"),
     )
-    
+    csv_data: CSVData = {"primary_csv": "pokemon_colors.csv", 
+                         "relationships": {}}
     _cache: Dict[int, "PokemonColor"] = {}
-    
+
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonColor"]:
+        colors = []
+        for id_, color_data in df.iterrows():
+            poke_api_id = id_
+            name = color_data.identifier
+            color = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[color.poke_api_id] = color
+            colors.append(color)
+        return colors
+    
+    """ @classmethod
     def parse_data(cls,data) -> "PokemonColor":
         poke_api_id = data.id_
         name = data.name
         color = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[color.poke_api_id] = color
-        return color
+        return color """
     
     def __init__(self, poke_api_id: int, name: str,):
         self.id = get_next_id()
@@ -609,8 +677,8 @@ class PokemonColor(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class PokemonForm(Base, PokeApiResource):
     __tablename__ = "PokemonForm"
@@ -703,18 +771,30 @@ class PokemonHabitat(Base, PokeApiResource):
                                                           primaryjoin="PokemonHabitat.id == foreign(PokemonSpecies.habitat_key)")
 
     _cache: Dict[int, "PokemonHabitat"] = {}
-
+    csv_data: CSVData = {"primary_csv": "pokemon_habitats.csv", 
+                         "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokemonHabitat_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonHabitat"]:
+        habitats = []
+        for id_, habitat_data in df.iterrows():
+            poke_api_id = id_
+            name = habitat_data.identifier
+            habitat = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[habitat.poke_api_id] = habitat
+            habitats.append(habitat)
+        return habitats
+
+    """ @classmethod
     def parse_data(cls,data) -> "PokemonHabitat":
         poke_api_id = data.id_
         name = data.name
         habitat = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[habitat.poke_api_id] = habitat
-        return habitat
+        return habitat """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -722,8 +802,8 @@ class PokemonHabitat(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class PokemonShape(Base, PokeApiResource):
     __tablename__ = "PokemonShape"
@@ -736,22 +816,37 @@ class PokemonShape(Base, PokeApiResource):
     names: Mapped[List["PokemonShapeName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                           primaryjoin="PokemonShape.id == foreign(PokemonShapeName.object_key)")
     
+    descriptions: Mapped[List["PokemonShapeDescription"]] = relationship(back_populates="object_ref", cascade="save-update",
+                                                          primaryjoin="PokemonShape.id == foreign(PokemonShapeDescription.object_key)")
+    
     pokemon_species: Mapped[List["PokemonSpecies"]] = relationship(back_populates="shape", cascade="save-update",
                                                           primaryjoin="PokemonShape.id == foreign(PokemonSpecies.shape_key)")
     
     _cache: Dict[int, "PokemonShape"] = {}
-
+    csv_data: CSVData = {"primary_csv": "pokemon_shapes.csv", 
+                         "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokemonShape_PokeApiId"),
     )
-    
+
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonShape"]:
+        shapes = []
+        for id_, shape_data in df.iterrows():
+            poke_api_id = id_
+            name = shape_data.identifier
+            shape = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[shape.poke_api_id] = shape
+            shapes.append(shape)
+        return shapes
+    
+    """ @classmethod
     def parse_data(cls,data) -> "PokemonShape":
         poke_api_id = data.id_
         name = data.name
         shape = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[shape.poke_api_id] = shape
-        return shape
+        return shape """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -759,8 +854,8 @@ class PokemonShape(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class PokemonSpecies(Base, PokeApiResource):
     __tablename__ = "PokemonSpecies"
@@ -976,7 +1071,7 @@ class PokemonStat(Base, PokeApiResource):
     __tablename__ = "PokemonStat"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
-    game_index: Mapped[Optional[int]] = mapped_column(Integer)
+    game_index: Mapped[Optional[int]] = mapped_column(TinyInteger)
     is_battle_only: Mapped[Optional[bool]] = mapped_column(Boolean)
     damage_class_key: Mapped[Optional[int]] = mapped_column(Integer)
 
@@ -1003,12 +1098,28 @@ class PokemonStat(Base, PokeApiResource):
                                                           primaryjoin="PokemonStat.id == foreign(PokemonStatName.object_key)")
     
     _cache: Dict[int, "PokemonStat"] = {}
-
+    csv_data: CSVData = {"primary_csv": "stats.csv", 
+                         "relationships": {
+                             "damage_class_id": ManyToOneAttrs("damage_class","damage_class_key")
+                         }}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokemonStat_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonStat"]:
+        stats = []
+        for id_, stat_data in df.iterrows():
+            poke_api_id = id_
+            name = stat_data.identifier
+            game_index = stat_data.game_index
+            is_battle_only = stat_data.is_battle_only
+            stat = cls(poke_api_id=poke_api_id, name=name,game_index=game_index, is_battle_only=is_battle_only)
+            cls._cache[stat.poke_api_id] = stat
+            stats.append(stat)
+        return stats
+
+    """ @classmethod
     def parse_data(cls,data) -> "PokemonStat":
         poke_api_id = data.id_
         name = data.name
@@ -1017,7 +1128,7 @@ class PokemonStat(Base, PokeApiResource):
 
         stat = cls(poke_api_id=poke_api_id, name=name, game_index=game_index, is_battle_only=is_battle_only)
         cls._cache[stat.poke_api_id] = stat
-        return stat
+        return stat """
     
     def __init__(self, poke_api_id: int, name: str, game_index: int, is_battle_only: bool):
         self.id = get_next_id()
@@ -1089,19 +1200,34 @@ class PokemonType(Base, PokeApiResource):
                                                           primaryjoin="PokemonType.id == foreign(PokemonTypeName.object_key)")
     
     _cache: Dict[int, "PokemonType"] = {}
-
+    csv_data: CSVData = {"primary_csv": "types.csv", 
+                         "relationships": {
+                             "generation_id": ManyToOneAttrs("generation_introduced","generation_introduced_key"),
+                             "damage_class_id": ManyToOneAttrs("damage_class","damage_class_key")
+                         }}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PokemonType_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonType"]:
+        types_ = []
+        for id_, type_data in df.iterrows():
+            poke_api_id = id_
+            name = type_data.identifier
+            type_ = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[type_.poke_api_id] = type_
+            types_.append(type_)
+        return types_
+    
+    """ @classmethod
     def parse_data(cls,data) -> "PokemonType":
         poke_api_id = data.id_
         name = data.name
 
         type_ = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[type_.poke_api_id] = type_
-        return type_
+        return type_ """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -1109,10 +1235,10 @@ class PokemonType(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
-class PastTypeLink(Base):
+class PastTypeLink(Base, CSVResource):
     __tablename__ = "PastTypeLink"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     last_generation_key: Mapped[int] = mapped_column(Integer)
@@ -1138,13 +1264,13 @@ class PastTypeLink(Base):
 
 
 
-class PokemonTypeRelation(Base):
+class PokemonTypeRelation(Base, CSVResource):
     __tablename__ = "PokemonTypeRelation"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     offensive_type_key: Mapped[int] = mapped_column(Integer)
     defensive_type_key: Mapped[int] = mapped_column(Integer)
     generation_key: Mapped[Optional[int]] = mapped_column(Integer)
-    damage_multiplier: Mapped[float] = mapped_column(Float)
+    damage_factor: Mapped[int] = mapped_column(SmallInteger)
 
     offensive_type: Mapped["PokemonType"] = relationship(back_populates="offensive_relations", cascade="save-update",
                                                          primaryjoin="PokemonTypeRelation.offensive_type_key == PokemonType.id",
@@ -1155,18 +1281,46 @@ class PokemonTypeRelation(Base):
     generation: Mapped["Generation"] = relationship(primaryjoin="PokemonTypeRelation.generation_key == Generation.id",
                                                     foreign_keys=generation_key, cascade="save-update")
 
-    @classmethod
+    __table_args__ = (
+        UniqueConstraint("offensive_type_key","defensive_type_key","generation_key",name="ux_PokemonTypeRelation_offdefgen"),
+    )
+    csv_data: CSVData = {"primary_csv": "type_efficacy.csv", 
+                         "concat_csvs": ["type_efficacy_past.csv"],
+                         "relationships": {
+                             "damage_type_id": ManyToOneAttrs("offensive_type","offensive_type_key"),
+                             "target_type_id": ManyToOneAttrs("defensive_type","defensive_type_key"),
+                             "generation_id": ManyToOneAttrs("generation", "generation_key")
+                         }}
+    
+    """ @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonTypeRelation"]:
+        relations = []
+        for id_, relation_data in df.iterrows():
+            poke_api_id = id_
+            damage_factor = relation_data.damage_factor
+            relation = cls(poke_api_id=poke_api_id, damage_factor=damage_factor)
+            #cls._cache[type_.poke_api_id] = type_
+            relations.append(relation)
+        return relations """
+    
+    """ @classmethod
     def parse_data(cls,damage_multiplier: float) -> "PokemonTypeRelation":
         damage_multiplier = damage_multiplier
 
         relation = cls(damage_multiplier=damage_multiplier)
         #cls._cache[type_.poke_api_id] = type_
-        return relation
+        return relation """
     
-    def __init__(self, damage_multiplier: float):
+    def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        self.damage_multiplier = damage_multiplier
+        self.damage_factor = data.damage_factor
 
-    def compare(self, damage_multiplier=damage_multiplier):
-        if self.damage_multiplier != damage_multiplier:
-            self.damage_multiplier = damage_multiplier
+    def compare(self, data: pd.Series):
+        print(self.damage_factor)
+        print(data.damage_factor)
+        if self.damage_factor != data.damage_factor:
+            self.damage_factor = data.damage_factor
+
+    def get_unique_key(self):
+        gen_id = self.generation.poke_api_id if self.generation else None
+        return str(self.offensive_type.poke_api_id) + ":" + str(self.defensive_type.poke_api_id) + ":" + str(gen_id)

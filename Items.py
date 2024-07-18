@@ -1,8 +1,9 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, UniqueConstraint
 
-from Base import Base, ItemToItemAttributeLink, PokeApiResource, get_next_id
+from Base import Base, ItemToItemAttributeLink, PokeApiResource, get_next_id, CSVData
 
 if TYPE_CHECKING:
     from Berries import Berry
@@ -127,15 +128,26 @@ class ItemAttribute(Base, PokeApiResource):
                                                               primaryjoin="ItemAttribute.id == foreign(ItemAttributeDescription.object_key)")
     
     _cache: Dict[int, "ItemAttribute"] = {}
-
+    csv_data: CSVData = {"primary_csv": "item_flags.csv", "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemAttribute_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemAttribute"]:
+        attributes = []
+        for id_, attribute_data in df.iterrows():
+            poke_api_id = id_
+            name = attribute_data.identifier
+            attribute = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[attribute.poke_api_id] = attribute
+            attributes.append(attribute)
+        return attributes
+
+    @classmethod
     def parse_data(cls,data) -> "ItemAttribute":
         poke_api_id = data.id_
-        name = data.name
+        name = data.identifier
 
         att = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[att.poke_api_id] = att
@@ -147,8 +159,8 @@ class ItemAttribute(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class ItemCategory(Base, PokeApiResource):
     __tablename__ = "ItemCategory"
@@ -166,7 +178,7 @@ class ItemCategory(Base, PokeApiResource):
                                                               primaryjoin="ItemCategory.id == foreign(ItemCategoryName.object_key)")
     
     _cache: Dict[int, "ItemCategory"] = {}
-
+    
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemCategory_PokeApiId"),
     )
@@ -201,15 +213,27 @@ class ItemFlingEffect(Base, PokeApiResource):
     """ names: Mapped[List["ItemFlingEffectName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="ItemFlingEffect.id == foreign(ItemFlingEffectName.object_key)") """
     _cache: Dict[int, "ItemFlingEffect"] = {}
+    csv_data: CSVData = {"primary_csv": "item_fling_effects.csv", "relationships": {}}
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemFlingEffect_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemFlingEffect"]:
+        effects = []
+        for id_, effect_data in df.iterrows():
+            poke_api_id = id_
+            name = effect_data.identifier
+            effect = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[effect.poke_api_id] = effect
+            effects.append(effect)
+        return effects
+
+    @classmethod
     def parse_data(cls,data) -> "ItemFlingEffect":
         poke_api_id = data.id_
-        name = data.name
+        name = data.identifier
 
         fling_effect = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[fling_effect.poke_api_id] = fling_effect
@@ -221,8 +245,8 @@ class ItemFlingEffect(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class ItemPocket(Base, PokeApiResource):
     __tablename__ = "ItemPocket"
@@ -235,15 +259,27 @@ class ItemPocket(Base, PokeApiResource):
                                                               primaryjoin="ItemPocket.id == foreign(ItemPocketName.object_key)")
     
     _cache: Dict[int, "ItemPocket"] = {}
+    csv_data: CSVData = {"primary_csv": "item_pockets.csv", "relationships": {}}
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemPocket_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemPocket"]:
+        pockets = []
+        for id_, pocket_data in df.iterrows():
+            poke_api_id = id_
+            name = pocket_data.identifier
+            pocket = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[pocket.poke_api_id] = pocket
+            pockets.append(pocket)
+        return pockets
+
+    @classmethod
     def parse_data(cls,data) -> "ItemPocket":
         poke_api_id = data.id_
-        name = data.name
+        name = data.identifier
 
         pocket = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[pocket.poke_api_id] = pocket
@@ -255,5 +291,5 @@ class ItemPocket(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier

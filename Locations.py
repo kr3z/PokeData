@@ -1,9 +1,9 @@
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean
+from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, SmallInteger
 import pandas as pd
 
-from Base import Base, TinyInteger, RegionToVersionGroupLink, PokeApiResource, get_next_id
+from Base import Base, TinyInteger, RegionToVersionGroupLink, PokeApiResource, get_next_id, CSVData, ManyToOneAttrs, CSVResource
 
 if TYPE_CHECKING:
     from Encounters import Encounter, EncounterMethod
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class Location(Base, PokeApiResource):
     __tablename__ = "Location"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    region_key: Mapped[int] = mapped_column(Integer)
+    region_key: Mapped[Optional[int]] = mapped_column(Integer) # This can be null for a few locations
     name: Mapped[str] = mapped_column(String(100))
 
     region: Mapped["Region"] = relationship(back_populates="locations", cascade="save-update",
@@ -31,15 +31,26 @@ class Location(Base, PokeApiResource):
                                                                       primaryjoin="Location.id == foreign(EvolutionDetail.location_key)")
     
     _cache: Dict[int, "Location"] = {}
-
+    csv_data: CSVData = {"primary_csv": "locations.csv", "relationships": {"region_id": ManyToOneAttrs("region", "region_key")}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Location_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["Location"]:
+        locations = []
+        for id_, location_data in df.iterrows():
+            poke_api_id = id_
+            name = location_data.identifier
+            location = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[location.poke_api_id] = location
+            locations.append(location)
+        return locations
+    
+    @classmethod
     def parse_data(cls,data) -> "Location":
         poke_api_id = data.id_
-        name = data.name
+        name = data.identifier
 
         location = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[location.poke_api_id] = location
@@ -51,14 +62,14 @@ class Location(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class LocationArea(Base, PokeApiResource):
     __tablename__ = "LocationArea"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
-    game_index: Mapped[int] = mapped_column(TinyInteger)
+    name: Mapped[Optional[str]] = mapped_column(String(100))
+    game_index: Mapped[int] = mapped_column(SmallInteger)
     location_key: Mapped[int] = mapped_column(Integer)
 
     location: Mapped["Location"] = relationship(back_populates="areas", cascade="save-update",
@@ -72,20 +83,32 @@ class LocationArea(Base, PokeApiResource):
                                                            primaryjoin="LocationArea.id == foreign(LocationAreaName.object_key)")
     
     _cache: Dict[int, "LocationArea"] = {}
-
+    csv_data: CSVData = {"primary_csv": "location_areas.csv", "relationships": {"location_id": ManyToOneAttrs("location", "location_key")}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_LocationArea_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["LocationArea"]:
+        areas = []
+        for id_, area_data in df.iterrows():
+            poke_api_id = id_
+            name = area_data.identifier
+            game_index = area_data.game_index
+            area = cls(poke_api_id=poke_api_id, name=name, game_index=game_index)
+            cls._cache[area.poke_api_id] = area
+            areas.append(area)
+        return areas
+
+    """ @classmethod
     def parse_data(cls,data) -> "LocationArea":
         poke_api_id = data.id_
-        name = data.name
+        name = data.identifier
         game_index = data.game_index
 
         area = cls(poke_api_id=poke_api_id, name=name, game_index=game_index)
         cls._cache[area.poke_api_id] = area
-        return area
+        return area """
     
     def __init__(self, poke_api_id: int, name: str, game_index: int):
         self.id = get_next_id()
@@ -94,13 +117,13 @@ class LocationArea(Base, PokeApiResource):
         self.game_index = game_index
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
         if self.game_index != data.game_index:
             self.game_index = data.game_index
             
 
-class EncounterMethodRate(Base):
+class EncounterMethodRate(Base, CSVResource):
     __tablename__ = "EncounterMethodRate"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     rate: Mapped[int] = mapped_column(TinyInteger)
@@ -119,21 +142,40 @@ class EncounterMethodRate(Base):
     __table_args__ = (
         UniqueConstraint("location_area_key","encounter_method_key","version_key",name="ux_EncounterMethodRate_area_method_version"),
     )
+    csv_data: CSVData = {"primary_csv": "location_area_encounter_rates.csv",
+                          "relationships": {
+                                            "location_area_id": ManyToOneAttrs("location_area", "location_area_key"),
+                                            "encounter_method_id": ManyToOneAttrs("encounter_method", "encounter_method_key"),
+                                            "version_id": ManyToOneAttrs("version", "version_key")}}
 
-    @classmethod
+    """ @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["EncounterMethodRate"]:
+        encounters = []
+        for id_, encounter_data in df.iterrows():
+            #poke_api_id = id_
+            rate = encounter_data.rate
+            encounter = cls(rate = rate)
+            #cls._cache[encounter.poke_api_id] = encounter
+            encounters.append(encounter)
+        return encounters """
+    
+    """ @classmethod
     def parse_data(cls,data) -> "EncounterMethodRate":
         rate = data.rate
         encounter = cls(rate = rate)
         #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return encounter
+        return encounter """
     
-    def __init__(self, rate: int):
+    def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        self.rate = rate
+        self.rate = data.rate
 
     def compare(self, data):
         if self.rate != data.rate:
             self.rate = data.rate
+
+    def get_unique_key(self):
+        return str(self.location_area.poke_api_id) + ":" + str(self.encounter_method.poke_api_id) + ":" + str(self.version.poke_api_id)
 
 class PokemonEncounter(Base):
     __tablename__ = "PokemonEncounter"
@@ -184,15 +226,26 @@ class PalParkArea(Base, PokeApiResource):
     pokemon_encounters: Mapped[List["PalParkEncounter"]] = relationship(back_populates="pal_park_area",
                                                                         primaryjoin="PalParkArea.id == foreign(PalParkEncounter.pal_park_area_key)")
     _cache: Dict[int, "Region"] = {}
-
+    csv_data: CSVData = {"primary_csv": "pal_park_areas.csv", "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PalParkArea_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["PalParkArea"]:
+        areas = []
+        for id_, area_data in df.iterrows():
+            poke_api_id = id_
+            name = area_data.identifier
+            area = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[area.poke_api_id] = area
+            areas.append(area)
+        return areas
+    
+    @classmethod
     def parse_data(cls,data) -> "PalParkArea":
         poke_api_id = data.id_
-        name = data.name
+        name = data.identifier
 
         area = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[area.poke_api_id] = area
@@ -204,8 +257,8 @@ class PalParkArea(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class PalParkEncounter(Base):
     __tablename__ = "PalParkEncounter"
@@ -267,8 +320,9 @@ class Region(Base, PokeApiResource):
                                                            primaryjoin="Region.id == foreign(RegionName.object_key)")
 
     _cache: Dict[int, "Region"] = {}
-    _csv = "regions.csv"
-    relationship_attr_map = {}
+    #_csv = "regions.csv"
+    #relationship_attr_map = {}
+    csv_data: CSVData = {"primary_csv": "regions.csv", "relationships": {}}
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Region_PokeApiId"),
     )
@@ -285,14 +339,14 @@ class Region(Base, PokeApiResource):
         return regions
 
 
-    @classmethod
+    """ @classmethod
     def parse_data(cls,data) -> "Region":
         poke_api_id = data.id_
         name = data.name
 
         region = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[region.poke_api_id] = region
-        return region
+        return region """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
