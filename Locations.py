@@ -23,15 +23,15 @@ class Location(Base, PokeApiResource):
                                             foreign_keys=region_key)
     names: Mapped[List["LocationName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                        primaryjoin="Location.id == foreign(LocationName.object_key)")
-    game_indices: Mapped[List["LocationGameIndex"]] = relationship(back_populates="object_ref",
+    game_indices: Mapped[List["LocationGameIndex"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                                    primaryjoin="Location.id == foreign(LocationGameIndex.object_key)")
-    areas: Mapped[List["LocationArea"]] = relationship(back_populates="location",
+    areas: Mapped[List["LocationArea"]] = relationship(back_populates="location", cascade="save-update",
                                                        primaryjoin="Location.id == foreign(LocationArea.location_key)")
-    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="location",
+    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="location", cascade="save-update",
                                                                       primaryjoin="Location.id == foreign(EvolutionDetail.location_key)")
     
     _cache: Dict[int, "Location"] = {}
-    csv_data: CSVData = {"primary_csv": "locations.csv", "relationships": {"region_id": ManyToOneAttrs("region", "region_key")}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "locations.csv", "relationships": {"region_id": ManyToOneAttrs("region", "region_key")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Location_PokeApiId"),
     )
@@ -75,15 +75,17 @@ class LocationArea(Base, PokeApiResource):
     location: Mapped["Location"] = relationship(back_populates="areas", cascade="save-update",
                                                 primaryjoin="LocationArea.location_key == Location.id",
                                                 foreign_keys=location_key)
-    encounter_method_rates: Mapped[List["EncounterMethodRate"]] = relationship(back_populates="location_area",
+    encounter_method_rates: Mapped[List["EncounterMethodRate"]] = relationship(back_populates="location_area", cascade="save-update",
                                                                                primaryjoin="LocationArea.id == foreign(EncounterMethodRate.location_area_key)")
-    pokemon_encounters: Mapped[List["PokemonEncounter"]] = relationship(back_populates="location_area",
-                                                                        primaryjoin="LocationArea.id == foreign(PokemonEncounter.location_area_key)")
+    #pokemon_encounters: Mapped[List["PokemonEncounter"]] = relationship(back_populates="location_area",
+    #                                                                    primaryjoin="LocationArea.id == foreign(PokemonEncounter.location_area_key)")
+    encounters: Mapped[List["Encounter"]] = relationship(back_populates="location_area", cascade="save-update",
+                                                         primaryjoin="LocationArea.id == foreign(Encounter.location_area_key)")
     names: Mapped[List["LocationAreaName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                            primaryjoin="LocationArea.id == foreign(LocationAreaName.object_key)")
     
     _cache: Dict[int, "LocationArea"] = {}
-    csv_data: CSVData = {"primary_csv": "location_areas.csv", "relationships": {"location_id": ManyToOneAttrs("location", "location_key")}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "location_areas.csv", "relationships": {"location_id": ManyToOneAttrs("location", "location_key")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_LocationArea_PokeApiId"),
     )
@@ -131,22 +133,24 @@ class EncounterMethodRate(Base, CSVResource):
     encounter_method_key: Mapped[int] = mapped_column(Integer)
     version_key: Mapped[int] = mapped_column(Integer)
 
-    location_area: Mapped["LocationArea"] = relationship(back_populates="encounter_method_rates",
+    location_area: Mapped["LocationArea"] = relationship(back_populates="encounter_method_rates", cascade="save-update",
                                                          primaryjoin="EncounterMethodRate.location_area_key == LocationArea.id",
                                                          foreign_keys=location_area_key)
-    encounter_method: Mapped["EncounterMethod"] = relationship(primaryjoin="EncounterMethodRate.encounter_method_key == EncounterMethod.id",
+    encounter_method: Mapped["EncounterMethod"] = relationship(cascade="save-update",
+                                                                primaryjoin="EncounterMethodRate.encounter_method_key == EncounterMethod.id",
                                                                foreign_keys=encounter_method_key)
-    version: Mapped["Version"] = relationship(primaryjoin="EncounterMethodRate.version_key == Version.id",
+    version: Mapped["Version"] = relationship(cascade="save-update",
+                                                primaryjoin="EncounterMethodRate.version_key == Version.id",
                                               foreign_keys=version_key)
     
     __table_args__ = (
         UniqueConstraint("location_area_key","encounter_method_key","version_key",name="ux_EncounterMethodRate_area_method_version"),
     )
-    csv_data: CSVData = {"primary_csv": "location_area_encounter_rates.csv",
+    csv_data: CSVData = CSVData(**{"primary_csv": "location_area_encounter_rates.csv",
                           "relationships": {
                                             "location_area_id": ManyToOneAttrs("location_area", "location_area_key"),
                                             "encounter_method_id": ManyToOneAttrs("encounter_method", "encounter_method_key"),
-                                            "version_id": ManyToOneAttrs("version", "version_key")}}
+                                            "version_id": ManyToOneAttrs("version", "version_key")}})
 
     """ @classmethod
     def parse_csv(cls, df: pd.DataFrame) -> List["EncounterMethodRate"]:
@@ -177,7 +181,7 @@ class EncounterMethodRate(Base, CSVResource):
     def get_unique_key(self):
         return str(self.location_area.poke_api_id) + ":" + str(self.encounter_method.poke_api_id) + ":" + str(self.version.poke_api_id)
 
-class PokemonEncounter(Base):
+""" class PokemonEncounter(Base):
     __tablename__ = "PokemonEncounter"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     max_chance: Mapped[int] = mapped_column(TinyInteger)
@@ -213,7 +217,7 @@ class PokemonEncounter(Base):
 
     def compare(self, data):
         if self.max_chance != data.max_chance:
-            self.max_chance = data.max_chance
+            self.max_chance = data.max_chance """
 
 
 class PalParkArea(Base, PokeApiResource):
@@ -223,10 +227,10 @@ class PalParkArea(Base, PokeApiResource):
 
     names: Mapped[List["PalParkAreaName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                            primaryjoin="PalParkArea.id == foreign(PalParkAreaName.object_key)")
-    pokemon_encounters: Mapped[List["PalParkEncounter"]] = relationship(back_populates="pal_park_area",
+    pokemon_encounters: Mapped[List["PalParkEncounter"]] = relationship(back_populates="pal_park_area",cascade="save-update",
                                                                         primaryjoin="PalParkArea.id == foreign(PalParkEncounter.pal_park_area_key)")
     _cache: Dict[int, "Region"] = {}
-    csv_data: CSVData = {"primary_csv": "pal_park_areas.csv", "relationships": {}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "pal_park_areas.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_PalParkArea_PokeApiId"),
     )
@@ -322,7 +326,7 @@ class Region(Base, PokeApiResource):
     _cache: Dict[int, "Region"] = {}
     #_csv = "regions.csv"
     #relationship_attr_map = {}
-    csv_data: CSVData = {"primary_csv": "regions.csv", "relationships": {}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "regions.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Region_PokeApiId"),
     )

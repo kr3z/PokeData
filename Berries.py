@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, Boolean, UniqueConstraint
 
-from Base import Base, TinyInteger, get_next_id, PokeApiResource, CSVData, CSVResource
+from Base import Base, TinyInteger, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs
 
 if TYPE_CHECKING:
     from Contests import ContestType
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class Berry(Base, PokeApiResource):
     __tablename__ = "Berry"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
+    #name: Mapped[str] = mapped_column(String(100))
     growth_time: Mapped[int] = mapped_column(TinyInteger)
     max_harvest: Mapped[int] = mapped_column(TinyInteger)
     natural_gift_power: Mapped[int] = mapped_column(TinyInteger)
@@ -40,13 +40,34 @@ class Berry(Base, PokeApiResource):
                                                            primaryjoin="Berry.id == foreign(BerryFlavor.berry_key)")
     
     _cache: Dict[int, "Berry"] = {}
-    _csv = "berries.csv" # doesn't have name
-
+    #_csv = "berries.csv" # doesn't have name
+    csv_data: CSVData = CSVData(**{"primary_csv": "berries.csv", 
+                                   "relationships": {"item_id": ManyToOneAttrs("item","item_key"),
+                                                     "firmness_id": ManyToOneAttrs("firmness","firmness_key"),
+                                                     "natural_gift_type_id": ManyToOneAttrs("natural_gift_type","natural_gift_type_key")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Berry_PokeApiId"),
     )
 
     @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["Berry"]:
+        berries = []
+        for id_, berry_data in df.iterrows():
+            poke_api_id = id_
+            #name = berry_data.identifier
+            growth_time = berry_data.growth_time
+            max_harvest = berry_data.max_harvest
+            natural_gift_power = berry_data.natural_gift_power
+            size = berry_data.size
+            smoothness = berry_data.smoothness
+            soil_dryness = berry_data.soil_dryness
+            berry = cls(poke_api_id=poke_api_id, growth_time=growth_time, max_harvest=max_harvest, 
+                    natural_gift_power=natural_gift_power, size=size, smoothness=smoothness, soil_dryness=soil_dryness)
+            cls._cache[berry.poke_api_id] = berry
+            berries.append(berry)
+        return berries
+
+    """ @classmethod
     def parse_data(cls,data) -> "Berry":
         poke_api_id = data.id_
         name = data.name
@@ -60,13 +81,13 @@ class Berry(Base, PokeApiResource):
         berry = cls(poke_api_id=poke_api_id, name=name, growth_time=growth_time, max_harvest=max_harvest, 
                     natural_gift_power=natural_gift_power, size=size, smoothness=smoothness, soil_dryness=soil_dryness)
         cls._cache[berry.poke_api_id] = berry
-        return berry
+        return berry """
     
-    def __init__(self, poke_api_id: int, name: str, growth_time: int, max_harvest: int, 
+    def __init__(self, poke_api_id: int, growth_time: int, max_harvest: int, 
                     natural_gift_power: int, size: int, smoothness: int, soil_dryness: int):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
-        self.name = name
+        #self.name = name
         self.growth_time = growth_time
         self.max_harvest = max_harvest
         self.natural_gift_power = natural_gift_power
@@ -75,8 +96,8 @@ class Berry(Base, PokeApiResource):
         self.soil_dryness = soil_dryness
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        #if self.name != data.name:
+        #    self.name = data.name
         if self.growth_time != data.growth_time:
             self.growth_time = data.growth_time
         if self.max_harvest != data.max_harvest:
@@ -135,7 +156,7 @@ class BerryFirmness(Base, PokeApiResource):
     _cache: Dict[int, "BerryFirmness"] = {}
     #_csv = "berry_firmness.csv"
     #relationship_attr_map = {}
-    csv_data: CSVData = {"primary_csv": "berry_firmness.csv", "relationships": {}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "berry_firmness.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_BerryFirmness_PokeApiId"),
     )
@@ -167,7 +188,7 @@ class BerryFlavor(Base, CSVResource):
     #name: Mapped[str] = mapped_column(String(100))
     flavor: Mapped[int] = mapped_column(TinyInteger)
     contest_type_key: Mapped[int] = mapped_column(Integer)
-    berry_id: Mapped[int] = mapped_column(Integer)
+    berry_key: Mapped[int] = mapped_column(Integer)
 
     contest_type: Mapped["ContestType"] = relationship(back_populates="berry_flavor", cascade="save-update",
                                                        primaryjoin="BerryFlavor.contest_type_key == ContestType.id",
@@ -177,7 +198,7 @@ class BerryFlavor(Base, CSVResource):
     #                                                        primaryjoin="BerryFlavor.id == foreign(BerryFlavorLink.flavor_key)")
     
     berry: Mapped["Berry"] = relationship(back_populates="flavor_map",  cascade="save-update",
-                                          primaryjoin="BerryFlavor.berry_id == Berry.id", foreign_keys=berry_id)
+                                          primaryjoin="BerryFlavor.berry_key == Berry.id", foreign_keys=berry_key)
     
     # These three relationships need to be moved to contest type
     """ names: Mapped[List["BerryFlavorName"]] = relationship(back_populates="object_ref", cascade="save-update",
@@ -189,14 +210,17 @@ class BerryFlavor(Base, CSVResource):
                                                               primaryjoin="BerryFlavor.id == foreign(PokemonNature.likes_flavor_key)") """
     
     _cache: Dict[int, "BerryFlavor"] = {}
-    _csv = "berry_flavors.csv" # missing data!
+    #_csv = "berry_flavors.csv" # missing data!
+    csv_data: CSVData = CSVData(**{"primary_csv": "berry_flavors.csv", 
+                                   "relationships": {"berry_id": ManyToOneAttrs("berry","berry_key"),
+                                                     "contest_type_id": ManyToOneAttrs("contest_type", "contest_type_key")}})
 
     __table_args__ = (
         #UniqueConstraint("poke_api_id",name="ux_BerryFlavor_PokeApiId"),
-        UniqueConstraint("berry_id","contest_type_key",name="ux_BerryFlavor_Berry_Contest"),
+        UniqueConstraint("berry_key","contest_type_key",name="ux_BerryFlavor_Berry_Contest"),
     )
 
-    @classmethod
+    """ @classmethod
     def parse_csv(cls, df: pd.DataFrame) -> List["BerryFlavor"]:
         flavors = []
         for id_, flavor_data in df.iterrows():
@@ -206,7 +230,7 @@ class BerryFlavor(Base, CSVResource):
             flavor = cls(flavor=flavor)
             #cls._cache[flavor.poke_api_id] = flavor
             flavors.append(flavor)
-        return flavors
+        return flavors """
 
     """ @classmethod
     def parse_data(cls,data) -> "BerryFlavor":
@@ -222,9 +246,10 @@ class BerryFlavor(Base, CSVResource):
         self.poke_api_id = poke_api_id
         self.name = name """
 
-    def __init__(self, flavor: int):
+    #def __init__(self, flavor: int):
+    def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        self.flavor = flavor
+        self.flavor = data.flavor
 
     """ def compare(self, data):
         if self.name != data.name:

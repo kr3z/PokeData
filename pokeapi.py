@@ -7,14 +7,14 @@ from sqlalchemy import select, inspect, delete
 from Base import Session, PokeApiResource, WORKING_DIR, ManyToOneAttrs, CSVResource, FilterOperation
 from Berries import Berry, BerryFlavor, BerryFirmness
 from Contests import ContestType, ContestEffect, SuperContestEffect
-from Evolution import EvolutionChain, ChainLink, EvolutionDetail, EvolutionTrigger
+from Evolution import EvolutionChain, EvolutionDetail, EvolutionTrigger
 from Encounters import Encounter, EncounterMethod, EncounterCondition, EncounterConditionValue
 from Games import Generation, GenerationGameIndex, VersionGroup, Pokedex, VersionGameIndex, Version, PokedexEntry, GameIndex
 from Items import Item, ItemAttribute, ItemCategory, ItemFlingEffect, ItemPocket
-from Locations import Region, Location, PalParkEncounter, PalParkArea, PokemonEncounter, LocationArea, EncounterMethodRate
+from Locations import Region, Location, PalParkEncounter, PalParkArea, LocationArea, EncounterMethodRate
 from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle, DamageClass, MoveTarget, MoveCategory, MoveStatChange, PastMoveStatValues, MoveAilment
 from Pokemon import Pokemon, PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat, PokemonStat, PokemonNature, MoveBattleStylePreference, PokeathlonStat, PokemonType, PokemonTypeRelation
-from Pokemon import PastTypeLink, PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic, PokemonHeldItem, PokemonMove
+from Pokemon import PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic, PokemonHeldItem, PokemonMove, PokemonAbilityLink
 from TextEntries import Language, TextEntry, VersionTextEntry, VersionGroupTextEntry, NestedVersionGroupTextEntry
 
 logger = logging.getLogger('pokeapi')
@@ -44,10 +44,14 @@ regions_df = regions_df.replace({np.nan: None}) """
 
 ### After that we can load any types without links
 ### Or that only link to Region/Generation/VersionGroup/Version
+### Group 1
 # BerryFirmness
 # ContestType ContestName BerryFlavorName
 # ContestEffect ContestEffectEffect ContestEffectFlavorText
 # SuperContestEffect SuperContestEffectFlavorText
+# EncounterMethod EncounterMethodName
+# EncounterCondition EncounterConditionName
+# EvolutionTrigger EvolutionTriggerName
 # ItemAttribute ItemAttributeName ItemAttributeDescription
 # ItemFlingEffect ItemFlingEffectEffect
 # ItemPocket ItemPocketName
@@ -60,44 +64,97 @@ regions_df = regions_df.replace({np.nan: None}) """
 # DamageClass DamageClassName DamageClassDescription
 # MoveLearnMethod (pokemon_move_methods.csv) MoveLearnMethodName MoveLearnMethodDescription
 # MoveTarget MoveTargetName MoveTargetDescription
+# EggGroup EggGroupName
+# GrowthRate GrowthRateDescription
 # PokeathlonStat PokeathlonStatName
 # PokemonColor PokemonColorName
 # PokemonHabitat PokemonHabitatName
 # PokemonShape PokemonShapeName PokemonShapeAwesomName PokemonShapeDescription
+# PokemonGender
 
+### Next load types that depend on types in Group 1
+### Group 2
+# EncounterSlot # VersionGroup EncounterMethod
+# EncounterConditionValue EncounterConditionValueName # EncounterCondition
+# ItemCategory ItemCategoryName # ItemPocket
+# LocationArea LocationAreaName # depends on location
+# MoveEffectChange MoveEffectChangeText # Depends on MoveEffect
 # Pokedex PokedexName PokedexDescription # Region
 # PokemonType PokemonTypeName # Generation/DamageClass
-# PokemonTypeRelation # PokemonType/Generation
 # PokemonStat PokemonStatName # Depends on DamageClass
+# GrowthRateExperienceLevel # GrowthRate
+# PokemonAbility PokemonAbilityName AbilityFlavorText AbilityEffect # Generation
 
-# LocationArea LocationAreaName # depends on location
-
-# MoveEffectChange MoveEffectChangeText # Depends on MoveEffect
-# Move MoveName # Depends on Generation/Type/MoveEffect/MoveTarget/DamageClass/ContestType/ContestEffect/SuperContestEffect
-
-## PastMoveStatValues depends on Move/VersionGroup/Type and is not APIResource
-## MoveStatChange depends on Move/Stat and is not APIResource
-
-# BerryFlavor # Berry ContestType
-
+### Group 3
+# Berry # Item BerryFirmness PokemonType
 # EncounterMethodRate # depends on LocationArea/EncounterMethod/Version
+# Item ItemName ItemFlavorText ItemEffect # ItemFlingEffect ItemCategory
+# Move MoveName # Depends on Generation/Type/MoveEffect/MoveTarget/DamageClass/ContestType/ContestEffect/SuperContestEffect
+# PokemonAbilityPastEffect AbilityPastEffect # PokemonAbility VersionGroup
+# PokemonCharacteristic CharacteristicDescription # PokemonStat
+# PokemonTypeRelation # PokemonType/Generation
+# PokemonNature/PokemonNatureName # Stat/PokeathlonStat/ContestType
+
+### Group 4
+# BerryFlavor # Berry ContestType
+# EvolutionChain # Item
+# PastMoveStatValues depends on Move/VersionGroup/Type and is not APIResource
+# MoveStatChange depends on Move/Stat and is not APIResource
+# Machine # Move Item VersionGroup
+# MoveBattleStylePreference # PokemonNature/MoveBattleStyle
+
+### Group 5
+# PokemonSpecies PokemonName PokemonSpeciesFlavorText PokemonFormDescription PokemonGenus # Generation EvolutionChain PokemonColor PokemonShape PokemonHabitat GrowthRate
+
+### Group 6
+# EvolutionDetail # PokemonSpecies EvolutionTrigger Item PokemonGender Location Move PokemonType
+# PokedexEntry # PokemonSpecies Pokedex
+# Pokemon # PokemonSpecies
+
+### Group 7
+# Encounter # Version LocationArea EncounterSlot Pokemon
+# PokemonTypeLink # Pokemon PokemonType
+# PokemonPastTypeLink # Pokemon PokemonType Generation
+# PokemonAbilityLink # Pokemon PokemonAbility Generation
+# PokemonForm PokemonFormName PokemonFormFormName # Pokemon
+
+### Group 8
+# PokemonFormTypeLink # PokemonForm PokemonType
+# PokemonFormPokeathlonStat # PokemonForm PokeathlonStat
+
 
 ### Process Game Index Types:
+# ItemGameIndex # Item Generation
 # TypeGameIndex # depends on Type/Generation
 # LocationGameIndex # depends on Location/Generation
+# FormGameIndex # PokemonForm Generation
+
+## Process Many-to-many relationships
+# TODO: Need to implement this processing
+# Just keeping a list of csvs for now
+# contest_combos.csv
+# encounter_condition_value_map.csv
+# item_flag_map.csv
+# pokedex_version_groups.csv
+# pokemon_egg_groups.csv
+# super_contest_combos.csv
+# version_group_pokemon_move_methods.csv
+# version_group_regions.csv
 
 
 def process_nonapi_csv(T: Type[CSVResource]):
     type_name = T.__tablename__
-    CSV = CSV_DIR + T.csv_data['primary_csv']
+    #CSV = CSV_DIR + T.csv_data['primary_csv']
+    CSV = CSV_DIR + T.csv_data.primary_csv
     logger.debug("Process non-api CSV file for %s at location: %s", type_name, CSV)
-    df = pd.read_csv(CSV)
-    if T.csv_data.get("concat_csvs"):
-        for csv_file in T.csv_data.get("concat_csvs"):
-            df2 = pd.read_csv(CSV_DIR + csv_file)
-            #df2.rename(columns={merge_column: 'id'}, inplace=True)
-            df = pd.concat([df, df2], ignore_index=True, sort=False)
-            #df.set_index('id', inplace=True)
+    df = pd.read_csv(CSV,keep_default_na=False,na_values=[''])
+    #if T.csv_data.get("concat_csvs"):
+    #    for csv_file in T.csv_data.get("concat_csvs"):
+    for csv_file in T.csv_data.concat_csvs:
+        df2 = pd.read_csv(CSV_DIR + csv_file,keep_default_na=False,na_values=[''])
+        #df2.rename(columns={merge_column: 'id'}, inplace=True)
+        df = pd.concat([df, df2], ignore_index=True, sort=False)
+        #df.set_index('id', inplace=True)
     df = df.replace({np.nan: None})
 
     with Session() as session:
@@ -108,7 +165,14 @@ def process_nonapi_csv(T: Type[CSVResource]):
     
     idx_to_keys: Dict[int, str] = {}
     for idx,row_data in df.iterrows():
-        unique_key = ":".join([str(int(row_data[attr_name])) if isinstance(row_data[attr_name],float) else str(row_data[attr_name]) for attr_name in T.csv_data['relationships'].keys()])
+        unique_key = ""
+        if issubclass(T, GameIndex):
+            unique_key += str(row_data.game_index) + ":"
+        elif issubclass(T,PokemonAbilityLink):
+            unique_key += str(row_data.slot) + ":"
+        unique_key += ":".join([str(int(row_data[attr_name])) if isinstance(row_data[attr_name],float) else str(row_data[attr_name]) for attr_name in T.csv_data.relationships.keys()])
+        for attr_name in T.csv_data.append_unique_attrs:
+            unique_key += ":" + str(row_data[attr_name])
         idx_to_keys[idx] = unique_key
 
     new_idxs = []
@@ -123,6 +187,8 @@ def process_nonapi_csv(T: Type[CSVResource]):
         else:
             logger.debug("Process %s: Parsing new entry: %s", type_name, unique_key)
             new_idxs.append(idx)
+            #logger.error("Found new idx: %s", idx)
+            #raise
 
     with Session() as session:
         for existing_object, object_data in update_entries_map.items():
@@ -150,81 +216,24 @@ def process_nonapi_csv(T: Type[CSVResource]):
             logger.debug("Process %s: Found %s existing entries to be deleted for %s", type_name, len(existing_entry_map), type_name)
             for entry_to_delete in existing_entry_map:
                 logger.debug("Process %s: Deleting entry: %s", type_name, entry_to_delete)
+            #raise
             ids_to_delete: List[int] = [ delete_entry.id for delete_entry in existing_entry_map.values() ]
             session.execute(delete(T).where(T.id.in_(ids_to_delete)))
         session.commit()
-
-def process_text_entry_csv(T: Type[TextEntry]):
-    type_name = T.__tablename__
-    CSV = CSV_DIR + T.csv_data['primary_csv']
-    logger.debug("Process text entry CSV file for %s at location: %s", type_name, CSV)
-    df = pd.read_csv(CSV)
-    df = df.replace({np.nan: None})
-
-    with Session() as session:
-        existing_entries = session.scalars(select(T)).all()
-        text_entry_map: Dict[str, TextEntry] = { text_entry.get_text_key(): text_entry for text_entry in existing_entries}
-    if len(text_entry_map) > 0:
-        logger.debug("Process %s: Found %s existing TextEntries for %s", type_name, len(text_entry_map), type_name)
-    #idx_to_text_keys: Dict[int, str] = T.build_text_keys(df)
-    idx_to_text_keys: Dict[int, str] = {}
-    for idx,row_data in df.iterrows():
-        text_key = ":".join([str(row_data[attr_name]) for attr_name in T.csv_data['relationships'].keys()])
-        idx_to_text_keys[idx] = text_key
-    new_idxs = []
-    updated_entries = []
-    for idx, text_key in idx_to_text_keys.items():
-        text_entry = text_entry_map.pop(text_key, None)
-        if text_entry:
-            #logger.debug("Process %s: Found existing TextEntry for key: %s", type_name, text_key)
-            if text_entry.compare(df.loc[idx]):
-                updated_entries.append(text_entry)
-        else:
-            logger.debug("Process %s: Parsing new TextEntry: %s", type_name, text_key)
-            new_idxs.append(idx)
-    with Session() as session:
-        for idx,text_data in df.loc[new_idxs].iterrows():
-            text_object: TextEntry = T(text_data)
-            process_many_to_one(text_object, text_data)
-            text_object = session.merge(text_object)
-
-
-            """ ins = inspect(text_object)
-            for data_attr_name,object_attr_names  in T.relationship_attr_map.items():
-                data_id = text_data[data_attr_name]
-                object_class = getattr(ins.mapper.relationships,object_attr_names[0]).mapper.class_
-                object_ref, _ = object_class.get_from_cache(data_id)
-                setattr(text_object,object_attr_names[0],object_ref)
-                setattr(text_object,object_attr_names[1],object_ref.id) """
-
-        session.flush()
-        for text_entry in updated_entries:
-            text_entry = session.merge(text_entry)
-        session.flush()
-
-        if len(text_entry_map) > 0:
-            logger.debug("Process %s: Found %s existing TextEntries to be deleted for %s", type_name, len(text_entry_map), type_name)
-            for text_to_delete in text_entry_map:
-                logger.debug("Process %s: Deleting TextEntry: %s", type_name, text_to_delete)
-            text_ids_to_delete: List[int] = [ text_entry.id for text_entry in text_entry_map.values() ]
-            session.execute(delete(T).where(T.id.in_(text_ids_to_delete)))
-        session.commit()
-
-#def process_game_index_csv(T: Type[GameIndex]):
-
             
 
 def process_csv(T: Type[PokeApiResource]):
     type_name = T.__tablename__
-    CSV = CSV_DIR + T.csv_data['primary_csv']
+    #CSV = CSV_DIR + T.csv_data['primary_csv']
+    CSV = CSV_DIR + T.csv_data.primary_csv
     logger.debug("Process CSV file for %s at location: %s", type_name, CSV)
     new_pokeapi_ids = []
     objects_to_update = []
-    df = pd.read_csv(CSV, index_col='id')
+    df = pd.read_csv(CSV, index_col='id',keep_default_na=False,na_values=[''])
     #if T.csv_data.get("merge_csvs"):
     for merge_csv in T.csv_data.merge_csvs:
         #for csv_file, merge_column in T.csv_data.get("merge_csvs").items():
-            df2 = pd.read_csv(CSV_DIR + merge_csv.csv)
+            df2 = pd.read_csv(CSV_DIR + merge_csv.csv,keep_default_na=False,na_values=[''])
             if merge_csv.filter:
                 filter = merge_csv.filter
                 filter_att = getattr(df2, filter.column_name)
@@ -253,6 +262,7 @@ def process_csv(T: Type[PokeApiResource]):
         else:
             logger.debug("Process %s: id_: %s not in cache, parsing from csv", type_name, pokeapi_id)
             new_pokeapi_ids.append(pokeapi_id)
+            #raise
 
     with Session() as session:
         for api_object in objects_to_update:
@@ -272,7 +282,7 @@ def process_csv(T: Type[PokeApiResource]):
 
 def process_many_to_one(object: CSVResource, data):
     ins = inspect(object)
-    for data_attr_name,object_attr_names  in object.csv_data['relationships'].items(): #object.relationship_attr_map.items():
+    for data_attr_name,object_attr_names  in object.csv_data.relationships.items(): #object.relationship_attr_map.items():
         logger.debug("process_many_to_one: process: %s for %s", data_attr_name, object_attr_names)
         data_id = data[data_attr_name]
         if data_id is None:
@@ -281,34 +291,13 @@ def process_many_to_one(object: CSVResource, data):
         object_class = getattr(ins.mapper.relationships,object_attr_names.ref).mapper.class_
         object_ref, _ = object_class.get_from_cache(data_id)
         logger.debug("process_many_to_one: object_ref: %s", object_ref)
-        setattr(object,object_attr_names.ref,object_ref)
-        setattr(object,object_attr_names.key,object_ref.id)
+        if getattr(object,object_attr_names.key) != object_ref.id:
+            setattr(object,object_attr_names.ref,object_ref)
+            setattr(object,object_attr_names.key,object_ref.id)
 
 def proces_many_to_many(object, data):
     pass
 
-
-"""def process_text_entries(api_object):
-    # process text entries
-    text_entries_relationships = {}
-    for rel_name, rel in inspect(api_object).mapper.relationships.items():
-        if rel.target.name == 'TextEntry':
-            text_entries_relationships[rel_name] = rel
-
-    logger.debug("Process %s: Found %s TextEntry relationships to proecess", type_name, len(text_entries_relationships))
-    for text_relationship_name, text_relationship in text_entries_relationships.items():
-        text_class = text_relationship.mapper.class_
-        text_attr = getattr(api_object, text_relationship_name)
-        data_attr = getattr(object_data, text_relationship_name)
-        if issubclass(text_class, VersionTextEntry):
-            text_entry_map: Dict[str, TextEntry] = { text_entry.text_entry + str(text_entry.language.poke_api_id) + ":" + str(text_entry.version.poke_api_id): text_entry for text_entry in  text_attr}
-        elif issubclass(text_class, VersionGroupTextEntry):
-            text_entry_map: Dict[str, TextEntry] = { text_entry.text_entry + str(text_entry.language.poke_api_id) + ":" + str(text_entry.version_group.poke_api_id): text_entry for text_entry in  text_attr}
-        else:
-            text_entry_map: Dict[str, TextEntry] = { text_entry.text_entry + str(text_entry.language.poke_api_id): text_entry for text_entry in  text_attr}
-        if len(text_entry_map) > 0:
-            logger.debug("Process %s: Found %s existing TextEntries for %s: %s", type_name, len(text_entry_map), type_name, text_relationship_name)
-            #logger.debug(text_entry_map) """
 
     
 

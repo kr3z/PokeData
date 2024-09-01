@@ -36,6 +36,7 @@ sqlalchemy_url = URL.create(
 utf8mb4_2500 = String(2500).with_variant(mysql.VARCHAR(2500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_5000 = String(5000).with_variant(mysql.VARCHAR(5000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_1000 = String(1000).with_variant(mysql.VARCHAR(1000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
+utf8mb4_500 = String(500).with_variant(mysql.VARCHAR(500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_200 = String(200).with_variant(mysql.VARCHAR(200,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_50 = String(50).with_variant(mysql.VARCHAR(50,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 
@@ -64,15 +65,17 @@ class FilterCSV:
 class MergeCSV:
     csv: str
     merge_column: str
-    rename_columns: Optional[Dict[str,str]] # Dict[from,to]
-    filter: Optional[FilterCSV]
+    rename_columns: Optional[Dict[str,str]] = None # Dict[from,to]
+    filter: Optional[FilterCSV] = None
 
 @dataclass(frozen=True)
 class CSVData():
     primary_csv: str
     relationships: Dict[str,Tuple[str,str]]
     #secondary_csvs: Optional[Dict[str,str]] # Dict[csv_name, join_key]
-    merge_csvs: Optional[List[MergeCSV]]
+    merge_csvs: Optional[Tuple[MergeCSV, ...]] = ()
+    concat_csvs: Optional[Tuple[str, ...]] = ()
+    append_unique_attrs: Optional[Tuple[str,...]] = ()
 
 
 class Base(DeclarativeBase):
@@ -163,6 +166,13 @@ SuperContestComboLink = Table(
     Base.metadata,
     Column("lead_move_key", ForeignKey("Move.id"), primary_key=True),
     Column("follow_up_move_key", ForeignKey("Move.id"), primary_key=True),
+)
+
+SpeciesToEggGroupLink = Table(
+    "SpeciesToEggGroupLink",
+    Base.metadata,
+    Column("species_key", ForeignKey("PokemonSpecies.id"), primary_key=True),
+    Column("egg_group_key", ForeignKey("EggGroup.id"), primary_key=True),
 )
 
 class CSVResource:

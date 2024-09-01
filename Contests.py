@@ -27,7 +27,7 @@ class ContestType(Base, PokeApiResource):
                                                primaryjoin="ContestType.id == foreign(Move.contest_type_key)")
     
     # Moved these from BerryFlavor
-    names: Mapped[List["BerryFlavorName"]] = relationship(back_populates="object_ref", cascade="save-update",
+    flavors: Mapped[List["BerryFlavorName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                             primaryjoin="ContestType.id == foreign(BerryFlavorName.object_key)")
 
     hates_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="hates_flavor", cascade="save-update",
@@ -37,7 +37,7 @@ class ContestType(Base, PokeApiResource):
     
     _cache: Dict[int, "ContestType"] = {}
     #_csv = "contest_types.csv" # Uses identifier instead of name
-    csv_data: CSVData = {"primary_csv": "contest_types.csv", "relationships": {}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "contest_types.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ContestType_PokeApiId"),
     )
@@ -103,7 +103,7 @@ class ContestEffect(AbstractContestEffect):
 
     _cache: Dict[int, "ContestEffect"] = {}
     #_csv = "contest_effects.csv"
-    csv_data: CSVData = {"primary_csv": "contest_effects.csv", "relationships": {}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "contest_effects.csv", "relationships": {}})
 
     @classmethod
     def parse_csv(cls, df: pd.DataFrame) -> List["ContestEffect"]:
@@ -147,7 +147,7 @@ class SuperContestEffect(AbstractContestEffect):
     __mapper_args__ = {"polymorphic_identity": True}
 
     _cache: Dict[int, "SuperContestEffect"] = {}
-    csv_data: CSVData = {"primary_csv": "super_contest_effects.csv", "relationships": {}}
+    csv_data: CSVData = CSVData(**{"primary_csv": "super_contest_effects.csv", "relationships": {}})
 
     @classmethod
     def parse_csv(cls, df: pd.DataFrame) -> List["SuperContestEffect"]:
