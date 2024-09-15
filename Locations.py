@@ -264,7 +264,7 @@ class PalParkArea(Base, PokeApiResource):
         if self.name != data.identifier:
             self.name = data.identifier
 
-class PalParkEncounter(Base):
+class PalParkEncounter(Base, CSVResource):
     __tablename__ = "PalParkEncounter"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     base_score: Mapped[int] = mapped_column(TinyInteger)
@@ -284,26 +284,26 @@ class PalParkEncounter(Base):
         UniqueConstraint("pokemon_species_key","pal_park_area_key",name="ux_PalParkEncounter_SpeciesKey_PalParkAreaKey"),
     )
 
-    @classmethod
-    def parse_data(cls,base_score: int, rate: int) -> "PalParkEncounter":
-        #poke_api_id = data.id
-        encounter = cls(base_score = base_score, rate = rate)
-        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return encounter
-    
-    def __init__(self, base_score: int, rate: int):
-        self.id = get_next_id()
-        self.base_score = base_score
-        #self.rarity = rarity
-        self.rate = rate
+    csv_data: CSVData = CSVData(**{"primary_csv": "pal_park.csv",
+                          "relationships": {
+                                            "species_id": ManyToOneAttrs("pokemon_species", "pokemon_species_key"),
+                                            "area_id": ManyToOneAttrs("pal_park_area", "pal_park_area_key")}})
 
-    def compare(self, base_score: int, rate: int):
-        if self.base_score != base_score:
-            self.base_score = base_score
-        """ if self.rarity != rarity:
-            self.rarity = rarity """
-        if self.rate != rate:
-            self.rate = rate
+    
+    def __init__(self, data: pd.Series):
+        self.id = get_next_id()
+        self.base_score = data.base_score
+        self.rate = data.rate
+
+    def compare(self, data: pd.Series):
+        if self.base_score != data.base_score:
+            self.base_score = data.base_score
+        if self.rate != data.rate:
+            self.rate = data.rate
+
+    def get_unique_key(self):
+        return str(self.pokemon_species.poke_api_id) + ":" + str(self.pal_park_area.poke_api_id)
+
 
 class Region(Base, PokeApiResource):
     __tablename__ = "Region"

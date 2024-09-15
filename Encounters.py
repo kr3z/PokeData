@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, Boolean, UniqueConstraint
 
-from Base import Base, TinyInteger, EncounterToEncounterCondValLink, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs
+from Base import Base, TinyInteger, EncounterToEncounterCondValLink, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, ManyToManyAttr, MergeCSV, GroupByCSV
 
 if TYPE_CHECKING:
     from Games import VersionGroup, Version
@@ -91,10 +91,13 @@ class Encounter(Base, PokeApiResource):
 
     _cache: Dict[int, "Encounter"] = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "encounters.csv",
+                                   "merge_csvs": (MergeCSV("encounter_condition_value_map.csv", "encounter_id"),),
+                                   "group_by": GroupByCSV(['encounter_condition_value_id'], ['id','version_id','location_area_id','encounter_slot_id','pokemon_id','min_level','max_level']),
                           "relationships": {"version_id": ManyToOneAttrs("version","version_key"),
                                             "location_area_id": ManyToOneAttrs("location_area","location_area_key"),
                                             "encounter_slot_id": ManyToOneAttrs("encounter_slot","encounter_slot_key"),
-                                            "pokemon_id": ManyToOneAttrs("pokemon","pokemon_key")}})
+                                            "pokemon_id": ManyToOneAttrs("pokemon","pokemon_key"),
+                                            "encounter_condition_value_id": ManyToManyAttr("condition_values")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Encounter_PokeApiId"),
     )

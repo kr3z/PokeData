@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Float, Computed, UniqueConstraint, Index, Boolean
 from sqlalchemy import Table, Column, ForeignKey
 
-from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, get_next_id, PokeApiResource, ContestComboLink, SuperContestComboLink, ManyToOneAttrs, CSVData, CSVResource, MergeCSV
+from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, get_next_id, PokeApiResource, ContestComboLink, SuperContestComboLink, ManyToOneAttrs, CSVData, CSVResource, MergeCSV, GroupByCSV, ManyToManyAttr, MoveToMoveFlagLink
 
 if TYPE_CHECKING:
     from Contests import ContestType, ContestEffect, SuperContestEffect#, ContestChain, SuperContestChain
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from TextEntries import DamageClassDescription, DamageClassName, MoveEffectEffect, MoveEffectChangeText
     from TextEntries import MoveAilmentName, MoveBattleStyleName, MoveCategoryDescription
     from TextEntries import MoveLearnMethodName, MoveLearnMethodDescription, MoveTargetDescription, MoveTargetName
+    from TextEntries import MoveFlagName, MoveFlagDescription
 
 class Move(Base, PokeApiResource):
     __tablename__ = "Move"
@@ -121,6 +122,8 @@ class Move(Base, PokeApiResource):
     move_effect: Mapped["MoveEffect"] = relationship(back_populates="moves", cascade="save-update",
                                                      primaryjoin="Move.effect_key == MoveEffect.id",
                                                      foreign_keys=effect_key)
+    
+    move_flags: Mapped[List["MoveFlag"]] = relationship(back_populates="moves", secondary=MoveToMoveFlagLink,  cascade="save-update")
     """ effect_changes: Mapped[List["MoveEffectChange"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveEffectChange.object_key)") """
     """ effect_changes: Mapped[List["MoveEffectChange"]] = relationship(back_populates="move", cascade="save-update",
@@ -133,7 +136,12 @@ class Move(Base, PokeApiResource):
     _cache: Dict[int, "Move"] = {}
     #_csv = "moves.csv"
     csv_data: CSVData = CSVData(**{"primary_csv": "moves.csv", 
-                         "merge_csvs": (MergeCSV("move_meta.csv", "move_id"),),
+                         "merge_csvs": (MergeCSV("move_meta.csv", "move_id"),
+                                        MergeCSV("move_flag_map.csv", "move_id"),
+                                        MergeCSV("contest_combos.csv", "first_move_id"),
+                                        MergeCSV("super_contest_combos.csv", "first_move_id", rename_columns={'second_move_id':'super_second_move_id'}),),
+                        "group_by": GroupByCSV(['move_flag_id','second_move_id','super_second_move_id'], 
+                                               ['id','identifier','generation_id','type_id','power','pp','accuracy','priority','target_id','damage_class_id','effect_id','effect_chance','contest_type_id','contest_effect_id','super_contest_effect_id','meta_category_id','meta_ailment_id','min_hits','max_hits','min_turns','max_turns','drain','healing','crit_rate','ailment_chance','flinch_chance','stat_chance']),
                          "relationships": {
                              "generation_id": ManyToOneAttrs("generation","generation_key"),
                              "type_id": ManyToOneAttrs("move_type","move_type_key"),
@@ -144,7 +152,10 @@ class Move(Base, PokeApiResource):
                              "contest_effect_id": ManyToOneAttrs("contest_effect","contest_effect_key"),
                              "super_contest_effect_id": ManyToOneAttrs("super_contest_effect","super_contest_effect_key"),
                              "meta_category_id": ManyToOneAttrs("category","category_key"),
-                             "meta_ailment_id": ManyToOneAttrs("ailment", "ailment_key")}})
+                             "meta_ailment_id": ManyToOneAttrs("ailment", "ailment_key"),
+                             "move_flag_id": ManyToManyAttr("move_flags"),
+                             "second_move_id": ManyToManyAttr("follow_up_contest_combo_moves"),
+                             "super_second_move_id": ManyToManyAttr("follow_up_super_contest_combo_moves")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Move_PokeApiId"),
     )
@@ -716,7 +727,7 @@ class DamageClass(Base, PokeApiResource):
     )
 
     @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["MoveLearnMethod"]:
+    def parse_csv(cls, df: pd.DataFrame) -> List["DamageClass"]:
         dcs = []
         for id_, dc_data in df.iterrows():
             poke_api_id = id_
@@ -762,7 +773,10 @@ class MoveLearnMethod(Base, PokeApiResource):
     _cache: Dict[int, "MoveLearnMethod"] = {}
     #_csv = "pokemon_move_methods.csv"
     #relationship_attr_map = {}
-    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_move_methods.csv", "relationships": {}})
+    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_move_methods.csv", 
+                                   "merge_csvs": (MergeCSV("version_group_pokemon_move_methods.csv", "pokemon_move_method_id"),),
+                                   "group_by": GroupByCSV(['version_group_id'], ['id','identifier']),
+                                   "relationships": {"version_group_id": ManyToManyAttr("version_groups")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_MoveLearnMethod_PokeApiId"),
     )
@@ -836,6 +850,45 @@ class MoveTarget(Base, PokeApiResource):
         target = cls(poke_api_id=poke_api_id, name=name)
         cls._cache[target.poke_api_id] = target
         return target
+    
+    def __init__(self, poke_api_id: int, name: str):
+        self.id = get_next_id()
+        self.poke_api_id = poke_api_id
+        self.name = name
+
+    def compare(self, data):
+        if self.name != data.identifier:
+            self.name = data.identifier
+
+class MoveFlag(Base, PokeApiResource): 
+    __tablename__ = "MoveFlag"
+    id: Mapped[int] = mapped_column(Integer,primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+
+    moves: Mapped[List["Move"]] = relationship(back_populates="move_flags", secondary=MoveToMoveFlagLink,  cascade="save-update")
+
+    names: Mapped[List["MoveFlagName"]] = relationship(back_populates="object_ref", cascade="save-update",
+                                                                  primaryjoin="MoveFlag.id == foreign(MoveFlagName.object_key)")
+    
+    descriptions: Mapped[List["MoveFlagDescription"]] = relationship(back_populates="object_ref", cascade="save-update",
+                                                                  primaryjoin="MoveFlag.id == foreign(MoveFlagDescription.object_key)")
+    
+    _cache: Dict[int, "MoveFlag"] = {}
+    csv_data: CSVData = CSVData(**{"primary_csv": "move_flags.csv", "relationships": {}})
+    __table_args__ = (
+        UniqueConstraint("poke_api_id",name="ux_MoveFlag_PokeApiId"),
+    )
+
+    @classmethod
+    def parse_csv(cls, df: pd.DataFrame) -> List["MoveFlag"]:
+        flags = []
+        for id_, flag_data in df.iterrows():
+            poke_api_id = id_
+            name = flag_data.identifier
+            flag = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[flag.poke_api_id] = flag
+            flags.append(flag)
+        return flags
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()

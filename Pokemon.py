@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, select, SmallInteger
 
-from Base import Base, TinyInteger, Session, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, MergeCSV, FilterCSV, FilterOperation, SpeciesToEggGroupLink
+from Base import Base, TinyInteger, Session, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, MergeCSV, FilterCSV, FilterOperation, SpeciesToEggGroupLink, GroupByCSV, ManyToManyAttr
 
 if TYPE_CHECKING:
     #from Berries import BerryFlavor
@@ -947,7 +947,7 @@ class PokemonFormTypeLink(AbstractTypeLink):
         text_key = super().get_unique_key()
         return text_key + ":" + str(self.form.poke_api_id)
 
-class PokemonHeldItem(Base):
+class PokemonHeldItem(Base, CSVResource):
     __tablename__ = "PokemonHeldItem"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     pokemon_key: Mapped[int] = mapped_column(Integer)
@@ -965,23 +965,28 @@ class PokemonHeldItem(Base):
     pokemon: Mapped["Pokemon"] = relationship(back_populates="held_items", cascade="save-update",
                                             primaryjoin="Pokemon.id == PokemonHeldItem.pokemon_key",
                                             foreign_keys=pokemon_key)
-
-    @classmethod
-    def parse_data(cls,rarity) -> "PokemonHeldItem":
-        #rarity = rarity
-        held_item = cls(rarity=rarity)
-
-        return held_item
     
-    def __init__(self, rarity: str,):
+    table_args__ = (
+        UniqueConstraint("pokemon_key","item_key","version_key",name="ux_PokemonHeldItem_PkmnItemVersion"),
+    )
+    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_items.csv", 
+                                   "relationships": {"pokemon_id": ManyToOneAttrs("pokemon", "pokemon_key"),
+                                                     "version_id": ManyToOneAttrs("version", "version_key"),
+                                                     "item_id": ManyToOneAttrs("item", "item_key")}})
+
+    
+    def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        self.rarity = rarity
+        self.rarity = data.rarity
 
-    def compare(self, rarity):
-        if self.rarity != rarity:
-            self.rarity = rarity
+    def compare(self, data: pd.Series):
+        if self.rarity != data.rarity:
+            self.rarity = data.rarity
 
-class PokemonMove(Base):
+    def get_unique_key(self):
+        return str(self.pokemon.poke_api_id) + ":" + str(self.version.poke_api_id) + ":" + str(self.item.poke_api_id)
+
+class PokemonMove(Base, CSVResource):
     __tablename__ = "PokemonMove"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     move_key: Mapped[int] = mapped_column(Integer)
@@ -989,6 +994,7 @@ class PokemonMove(Base):
     version_group_key: Mapped[int] = mapped_column(Integer)
     move_learn_method_key: Mapped[int] = mapped_column(Integer)
     level_learned_at: Mapped[int] = mapped_column(Integer)
+    order: Mapped[Optional[int]] = mapped_column(Integer)
 
     move: Mapped["Move"] = relationship(back_populates="learned_by_pokemon", cascade="save-update",
                                             primaryjoin="Move.id == PokemonMove.move_key",
@@ -1008,20 +1014,28 @@ class PokemonMove(Base):
     """ affecting_stats: Mapped[List["MoveStatAffect"]] = relationship(back_populates="move",
                                                                    primaryjoin="PokemonMove.id == foreign(MoveStatAffect.move_key)") """
     
-    @classmethod
-    def parse_data(cls,data) -> "PokemonMove":
-        level_learned_at = data.level_learned_at
-        move = cls(level_learned_at=level_learned_at)
-
-        return move
+    table_args__ = (
+        UniqueConstraint("pokemon_key","move_key","version_group_key", "move_learn_method_key",name="ux_PokemonMove_PkmnMoveVGMethod"),
+    )
+    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_moves.csv", 
+                                   "relationships": {"pokemon_id": ManyToOneAttrs("pokemon", "pokemon_key"),
+                                                     "version_group_id": ManyToOneAttrs("version_group", "version_group_key"),
+                                                     "move_id": ManyToOneAttrs("move", "move_key"),
+                                                     "pokemon_move_method_id": ManyToOneAttrs("move_learn_method", "move_learn_method_key")}})
     
-    def __init__(self, level_learned_at: int):
+    def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        self.level_learned_at = level_learned_at
+        self.level_learned_at = data.level
+        self.order = data.order
 
-    def compare(self, data):
-        if self.level_learned_at != data.level_learned_at:
-            self.level_learned_at = data.level_learned_at
+    def compare(self, data: pd.Series):
+        if self.level_learned_at != data.level:
+            self.level_learned_at = data.level
+        if self.order != data.order:
+            self.order = data.order
+
+    def get_unique_key(self):
+        return str(self.level_learned_at) + ":" + str(self.pokemon.poke_api_id) + ":" + str(self.version_group.poke_api_id) + ":" + str(self.move.poke_api_id) + ":" + str(self.move_learn_method.poke_api_id)
 
 class PokemonColor(Base, PokeApiResource):
     __tablename__ = "PokemonColor"
@@ -1432,13 +1446,18 @@ class PokemonSpecies(Base, PokeApiResource):
     # map nat dex number to PokemonSpecies object
     _cache: Dict[int, "PokemonSpecies"] = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_species.csv",
+                                   "merge_csvs": (MergeCSV("pokemon_egg_groups.csv", "species_id"),),
+                                   "group_by": GroupByCSV(['egg_group_id'], ['id','identifier','generation_id','evolves_from_species_id','evolution_chain_id','color_id','shape_id','habitat_id','gender_rate','capture_rate','base_happiness','is_baby','hatch_counter','has_gender_differences','growth_rate_id','forms_switchable','is_legendary','is_mythical','order','conquest_order']),
                           "relationships": {"generation_id": ManyToOneAttrs("generation","generation_key"),
                                             "evolves_from_species_id": ManyToOneAttrs("evolves_from_species","evolves_from_species_key"),
                                             "evolution_chain_id": ManyToOneAttrs("evolution_chain","evolution_chain_key"),
                                             "color_id": ManyToOneAttrs("color","color_key"),
                                             "shape_id": ManyToOneAttrs("shape", "shape_key"),
                                             "habitat_id": ManyToOneAttrs("habitat","habitat_key"),
-                                            "growth_rate_id": ManyToOneAttrs("growth_rate", "growth_rate_key")}})
+                                            "growth_rate_id": ManyToOneAttrs("growth_rate", "growth_rate_key"),
+                                            "egg_group_id": ManyToManyAttr("egg_groups")}})
+    
+
     
     @classmethod
     def parse_csv(cls, df: pd.DataFrame) -> List["PokemonSpecies"]:

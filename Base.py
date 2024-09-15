@@ -44,6 +44,7 @@ TinyInteger = SmallInteger().with_variant(mysql.TINYINT, 'mysql','mariadb')
 MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb') 
 
 ManyToOneAttrs = namedtuple('ManyToOneAttrs', ['ref', 'key'])
+ManyToManyAttr = namedtuple('ManyToManyAttr', ['ref'])
 
 class FilterOperation(Enum):
     GREATERTHAN = 1
@@ -69,6 +70,11 @@ class MergeCSV:
     filter: Optional[FilterCSV] = None
 
 @dataclass(frozen=True)
+class GroupByCSV:
+    agg_columns: List[str]
+    grouped_columns: List[str]
+
+@dataclass(frozen=True)
 class CSVData():
     primary_csv: str
     relationships: Dict[str,Tuple[str,str]]
@@ -76,6 +82,7 @@ class CSVData():
     merge_csvs: Optional[Tuple[MergeCSV, ...]] = ()
     concat_csvs: Optional[Tuple[str, ...]] = ()
     append_unique_attrs: Optional[Tuple[str,...]] = ()
+    group_by: Optional[GroupByCSV] = None
 
 
 class Base(DeclarativeBase):
@@ -118,6 +125,37 @@ def fill_pool() -> None:
         increment = res[1]
         logger.debug("Adding values %d to %d to id pool"  % (next_val,next_val+increment))
         _id_pool.extend(range(next_val,next_val+increment))
+
+class CSVResource:
+    csv_data: CSVData
+
+class PokeApiResource(CSVResource):
+    poke_api_id: Mapped[int] = mapped_column(Integer)
+
+    @classmethod
+    def get_from_cache(cls, cache_key: int) -> Tuple[Optional["PokeApiResource"], bool]:
+        needs_update = False
+        if cache_key not in cls._cache:
+            with Session() as session:
+                needs_update = True
+                cache_object = session.scalars(select(cls).filter_by(poke_api_id=cache_key)).first()
+                if cache_object:
+                    cls._cache[cache_object.poke_api_id] = cache_object
+        return cls._cache.get(cache_key), needs_update
+    
+    def recache(self):
+        self.__class__._cache[self.poke_api_id] = self
+
+""" class RegionToVersionGroupLink(Base, CSVResource):
+    __tablename__ = "RegionToVersionGroupLink"
+    region_key: Mapped[int] =  mapped_column(ForeignKey("Region.id"), primary_key=True)
+    version_group_key: Mapped[int] = mapped_column(ForeignKey("VersionGroup.id"), primary_key=True)
+
+    csv_data: CSVData = CSVData(**{"primary_csv": "version_group_regions.csv", 
+                                   "relationships": {"region_id":"region_key",
+                                                     "version_group_id": "version_group_key"}})
+    
+ """
 
 RegionToVersionGroupLink = Table(
     "RegionToVersionGroupLink",
@@ -175,22 +213,9 @@ SpeciesToEggGroupLink = Table(
     Column("egg_group_key", ForeignKey("EggGroup.id"), primary_key=True),
 )
 
-class CSVResource:
-    csv_data: CSVData
-
-class PokeApiResource(CSVResource):
-    poke_api_id: Mapped[int] = mapped_column(Integer)
-
-    @classmethod
-    def get_from_cache(cls, cache_key: int) -> Tuple[Optional["PokeApiResource"], bool]:
-        needs_update = False
-        if cache_key not in cls._cache:
-            with Session() as session:
-                needs_update = True
-                cache_object = session.scalars(select(cls).filter_by(poke_api_id=cache_key)).first()
-                if cache_object:
-                    cls._cache[cache_object.poke_api_id] = cache_object
-        return cls._cache.get(cache_key), needs_update
-    
-    def recache(self):
-        self.__class__._cache[self.poke_api_id] = self
+MoveToMoveFlagLink = Table(
+    "MoveToMoveFlagLink",
+    Base.metadata,
+    Column("move_key", ForeignKey("Move.id"), primary_key=True),
+    Column("move_flag_key", ForeignKey("MoveFlag.id"), primary_key=True),
+)

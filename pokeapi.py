@@ -1,10 +1,11 @@
 import logging
 import pandas as pd
 import numpy as np
+from math import nan, isnan
 from typing import Type, Dict, List
 from sqlalchemy import select, inspect, delete
 
-from Base import Session, PokeApiResource, WORKING_DIR, ManyToOneAttrs, CSVResource, FilterOperation
+from Base import Session, PokeApiResource, WORKING_DIR, ManyToOneAttrs, CSVResource, FilterOperation, ManyToManyAttr, GroupByCSV
 from Berries import Berry, BerryFlavor, BerryFirmness
 from Contests import ContestType, ContestEffect, SuperContestEffect
 from Evolution import EvolutionChain, EvolutionDetail, EvolutionTrigger
@@ -15,7 +16,7 @@ from Locations import Region, Location, PalParkEncounter, PalParkArea, LocationA
 from Moves import Move, MoveLearnMethod, Machine, MoveBattleStyle, DamageClass, MoveTarget, MoveCategory, MoveStatChange, PastMoveStatValues, MoveAilment
 from Pokemon import Pokemon, PokemonSpecies, EggGroup, PokemonColor, PokemonShape, PokemonHabitat, PokemonStat, PokemonNature, MoveBattleStylePreference, PokeathlonStat, PokemonType, PokemonTypeRelation
 from Pokemon import PokemonAbility, PokemonForm, GrowthRate, GrowthRateExperienceLevel, PokemonCharacteristic, PokemonHeldItem, PokemonMove, PokemonAbilityLink
-from TextEntries import Language, TextEntry, VersionTextEntry, VersionGroupTextEntry, NestedVersionGroupTextEntry
+from TextEntries import Language, TextEntry, VersionTextEntry, VersionGroupTextEntry
 
 logger = logging.getLogger('pokeapi')
 CSV_DIR = WORKING_DIR + "/pokeapi/data/v2/csv/"
@@ -38,8 +39,6 @@ regions_df = regions_df.replace({np.nan: None}) """
 ### as some TextEntries will depend on VersionGroup/Version
 # Region RegionName
 # Generation GenerationName
-# VersionGroup
-## Need to process version_group_regions.csv
 # Version VersionName (version_names.csv has error, introduced in most recent commit, hopefully fixed soon)
 
 ### After that we can load any types without links
@@ -52,6 +51,8 @@ regions_df = regions_df.replace({np.nan: None}) """
 # EncounterMethod EncounterMethodName
 # EncounterCondition EncounterConditionName
 # EvolutionTrigger EvolutionTriggerName
+# VersionGroup # Depends on Region through many-to-many relationship
+## Need to process version_group_regions.csv
 # ItemAttribute ItemAttributeName ItemAttributeDescription
 # ItemFlingEffect ItemFlingEffectEffect
 # ItemPocket ItemPocketName
@@ -64,6 +65,7 @@ regions_df = regions_df.replace({np.nan: None}) """
 # DamageClass DamageClassName DamageClassDescription
 # MoveLearnMethod (pokemon_move_methods.csv) MoveLearnMethodName MoveLearnMethodDescription
 # MoveTarget MoveTargetName MoveTargetDescription
+# MoveFlag MoveFlagName MoveFlagDescription
 # EggGroup EggGroupName
 # GrowthRate GrowthRateDescription
 # PokeathlonStat PokeathlonStatName
@@ -108,6 +110,7 @@ regions_df = regions_df.replace({np.nan: None}) """
 
 ### Group 6
 # EvolutionDetail # PokemonSpecies EvolutionTrigger Item PokemonGender Location Move PokemonType
+# PalParkEncounter
 # PokedexEntry # PokemonSpecies Pokedex
 # Pokemon # PokemonSpecies
 
@@ -116,6 +119,8 @@ regions_df = regions_df.replace({np.nan: None}) """
 # PokemonTypeLink # Pokemon PokemonType
 # PokemonPastTypeLink # Pokemon PokemonType Generation
 # PokemonAbilityLink # Pokemon PokemonAbility Generation
+# PokemonHeldItem # Pokemon Item Version
+# PokemonMove # Pokemon Move VersionGroup MoveLearnMethod
 # PokemonForm PokemonFormName PokemonFormFormName # Pokemon
 
 ### Group 8
@@ -126,6 +131,7 @@ regions_df = regions_df.replace({np.nan: None}) """
 ### Process Game Index Types:
 # ItemGameIndex # Item Generation
 # TypeGameIndex # depends on Type/Generation
+# PokemonGameIndex # Pokemon/Version
 # LocationGameIndex # depends on Location/Generation
 # FormGameIndex # PokemonForm Generation
 
@@ -135,12 +141,13 @@ regions_df = regions_df.replace({np.nan: None}) """
 # contest_combos.csv
 # encounter_condition_value_map.csv
 # item_flag_map.csv
+# move_flag_map
 # pokedex_version_groups.csv
 # pokemon_egg_groups.csv
 # super_contest_combos.csv
 # version_group_pokemon_move_methods.csv
 # version_group_regions.csv
-
+    
 
 def process_nonapi_csv(T: Type[CSVResource]):
     type_name = T.__tablename__
@@ -170,6 +177,8 @@ def process_nonapi_csv(T: Type[CSVResource]):
             unique_key += str(row_data.game_index) + ":"
         elif issubclass(T,PokemonAbilityLink):
             unique_key += str(row_data.slot) + ":"
+        elif issubclass(T,PokemonMove):
+            unique_key += str(row_data.level) + ":"
         unique_key += ":".join([str(int(row_data[attr_name])) if isinstance(row_data[attr_name],float) else str(row_data[attr_name]) for attr_name in T.csv_data.relationships.keys()])
         for attr_name in T.csv_data.append_unique_attrs:
             unique_key += ":" + str(row_data[attr_name])
@@ -187,16 +196,16 @@ def process_nonapi_csv(T: Type[CSVResource]):
         else:
             logger.debug("Process %s: Parsing new entry: %s", type_name, unique_key)
             new_idxs.append(idx)
-            #logger.error("Found new idx: %s", idx)
+            #logger.error("Found new idx: %s unique_key: %s", idx, unique_key)
             #raise
 
     with Session() as session:
         for existing_object, object_data in update_entries_map.items():
-            existing_object = session.merge(existing_object)
+            existing_object = session.merge(existing_object, load=False)
             #object_data = df.loc[api_object.poke_api_id]
             existing_object.compare(object_data)
             logger.debug("Process %s: Parsing ManyToOnes for existing object: %s", type_name, existing_object)
-            process_many_to_one(existing_object, object_data)
+            process_relationships(existing_object, object_data, session)
             session.flush()
         session.commit()
 
@@ -204,7 +213,7 @@ def process_nonapi_csv(T: Type[CSVResource]):
         for idx,entry_data in df.loc[new_idxs].iterrows():
             new_object: CSVResource = T(entry_data)
             logger.debug("Process %s: Parsing ManyToOnes for new object: %s", type_name, new_object)
-            process_many_to_one(new_object, entry_data)
+            process_relationships(new_object, entry_data, session)
             new_object = session.merge(new_object)
 
         session.flush()
@@ -229,7 +238,8 @@ def process_csv(T: Type[PokeApiResource]):
     logger.debug("Process CSV file for %s at location: %s", type_name, CSV)
     new_pokeapi_ids = []
     objects_to_update = []
-    df = pd.read_csv(CSV, index_col='id',keep_default_na=False,na_values=[''])
+    #df = pd.read_csv(CSV, index_col='id',keep_default_na=False,na_values=[''])
+    df = pd.read_csv(CSV,keep_default_na=False,na_values=[''])
     #if T.csv_data.get("merge_csvs"):
     for merge_csv in T.csv_data.merge_csvs:
         #for csv_file, merge_column in T.csv_data.get("merge_csvs").items():
@@ -250,7 +260,17 @@ def process_csv(T: Type[PokeApiResource]):
             df2.rename(columns=rename_cols, inplace=True)
 
             df = pd.merge(df, df2, how="left", on="id")
-            df.set_index('id', inplace=True)
+            #print(df)
+
+            #df.set_index('id', inplace=True)
+    if T.csv_data.group_by:
+        group_by: GroupByCSV = T.csv_data.group_by
+        #df = df.groupby(group_by.grouped_columns).agg({group_by.agg_column: lambda x: list(x)})
+        #df = df.groupby(group_by.grouped_columns)[group_by.agg_column].apply(list).reset_index()
+        #df = df.groupby(group_by.grouped_columns, as_index=False)[group_by.agg_column].apply(list)
+        df = df.groupby(group_by.grouped_columns, as_index=False, dropna=False)[group_by.agg_columns].agg(lambda x: list(x))
+        #print(df)
+    df.set_index('id', inplace=True)
             
     df = df.replace({np.nan: None})
     for pokeapi_id in df.index.to_list():
@@ -266,37 +286,92 @@ def process_csv(T: Type[PokeApiResource]):
 
     with Session() as session:
         for api_object in objects_to_update:
-            api_object = session.merge(api_object)
+            api_object = session.merge(api_object, load=False)
             object_data = df.loc[api_object.poke_api_id]
             api_object.compare(object_data)
-            process_many_to_one(api_object, object_data)
+            process_relationships(api_object, object_data, session)
             #df.drop(api_object.poke_api_id, inplace=True)
         session.commit()
 
     new_objects = T.parse_csv(df.loc[new_pokeapi_ids])
     with Session() as session:
         for new_object in new_objects:
-            process_many_to_one(new_object, df.loc[new_object.poke_api_id])
+            process_relationships(new_object, df.loc[new_object.poke_api_id], session)
             new_object = session.merge(new_object)
         session.commit()
 
-def process_many_to_one(object: CSVResource, data):
+def process_relationships(object: CSVResource, data, session):
     ins = inspect(object)
     for data_attr_name,object_attr_names  in object.csv_data.relationships.items(): #object.relationship_attr_map.items():
-        logger.debug("process_many_to_one: process: %s for %s", data_attr_name, object_attr_names)
+        logger.debug("process_relationships: process: %s for %s", data_attr_name, object_attr_names)
         data_id = data[data_attr_name]
-        if data_id is None:
-            # assume this is a nullable attribute
-            continue
-        object_class = getattr(ins.mapper.relationships,object_attr_names.ref).mapper.class_
-        object_ref, _ = object_class.get_from_cache(data_id)
-        logger.debug("process_many_to_one: object_ref: %s", object_ref)
-        if getattr(object,object_attr_names.key) != object_ref.id:
-            setattr(object,object_attr_names.ref,object_ref)
-            setattr(object,object_attr_names.key,object_ref.id)
 
-def proces_many_to_many(object, data):
-    pass
+        # For many-to-many relationships
+        if isinstance(data_id,list):
+            #logger.error("data_id: %s",data_id)
+            #logger.error("type(data_id): %s", type(data_id))
+            #filtered_data_id = [object_id for object_id in data_id if not isnan(object_id)]
+            filtered_data_id = []
+            for object_id in data_id:
+                if not isnan(object_id) and object_id not in filtered_data_id:
+                    filtered_data_id.append(object_id)
+            
+            """ for object_id in data_id:
+                if isnan(object_id):
+                    #print("deleting nan")
+                    data_id.remove(object_id)
+                    #break """
+
+            if len(filtered_data_id) == 0:
+                continue
+            #logger.error("filtered_data_id: %s", filtered_data_id)
+            object_class = getattr(ins.mapper.relationships,object_attr_names.ref).mapper.class_
+            #print(getattr(ins.mapper.relationships,object_attr_names.ref))
+            #logger.error("attr: %s",getattr(object,object_attr_names.ref))
+            existing_ids = [object.poke_api_id for object in getattr(object,object_attr_names.ref)]
+            new_ids = []
+            all_ids = []
+            for object_id in filtered_data_id:
+                #logger.error("object_id: %s",object_id)
+                object_id = int(object_id)
+                all_ids.append(object_id)
+                if object_id in existing_ids:
+                    existing_ids.remove(object_id)
+                else:
+                    new_ids.append(object_id)
+            session.flush()
+            if len(existing_ids) > 0 or len(new_ids)>0:
+                new_refs = []
+                for object_id in all_ids:
+                    object_ref, _ = object_class.get_from_cache(object_id)
+                    #logger.debug("process_relationships: object_ref: %s", object_ref)
+                    new_refs.append(object_ref)
+                setattr(object,object_attr_names.ref,new_refs)
+
+
+        else:
+            if data_id is None:
+                # assume this is a nullable attribute
+                continue
+            object_class = getattr(ins.mapper.relationships,object_attr_names.ref).mapper.class_
+            object_ref, _ = object_class.get_from_cache(data_id)
+            logger.debug("process_relationships: object_ref: %s", object_ref)
+            #if isinstance(object_attr_names,ManyToOneAttrs):
+            if getattr(object,object_attr_names.key) != object_ref.id:
+                setattr(object,object_attr_names.ref,object_ref)
+                setattr(object,object_attr_names.key,object_ref.id)
+        """ elif isinstance(object_attr_names,ManyToManyAttr):
+            object_exists = False
+            ref_objects = getattr(object,object_attr_names.ref)
+            for ref_object in ref_objects:
+                if ref_object.poke_api_id == object_ref.id:
+                    object_exists = True
+                    break
+            if not object_exists:
+                ref_objects.append(object_ref)
+                setattr(object,object_attr_names.ref,ref_objects) """
+
+
 
 
     

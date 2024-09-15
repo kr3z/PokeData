@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, UniqueConstraint
 
-from Base import Base, ItemToItemAttributeLink, PokeApiResource, get_next_id, CSVData, ManyToOneAttrs
+from Base import Base, ItemToItemAttributeLink, PokeApiResource, get_next_id, CSVData, ManyToOneAttrs, ManyToManyAttr, MergeCSV, GroupByCSV
 
 if TYPE_CHECKING:
     from Berries import Berry
@@ -69,8 +69,11 @@ class Item(Base, PokeApiResource):
     
     _cache: Dict[int, "Item"] = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "items.csv", 
+                                   "merge_csvs": (MergeCSV("item_flag_map.csv", "item_id"),),
+                                   "group_by": GroupByCSV(['item_flag_id'], ['id','identifier','category_id','cost','fling_power','fling_effect_id']),
                                    "relationships": {"category_id": ManyToOneAttrs("category", "category_key"),
-                                                     "fling_effect_id": ManyToOneAttrs("fling_effect", "fling_effect_key")}})
+                                                     "fling_effect_id": ManyToOneAttrs("fling_effect", "fling_effect_key"),
+                                                     "item_flag_id": ManyToManyAttr("attributes")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Item_PokeApiId"),
     )

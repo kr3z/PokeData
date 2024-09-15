@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from Pokemon import EggGroup, GrowthRate, PokemonColor, PokemonForm, PokemonHabitat
     from Pokemon import PokemonShape, PokeathlonStat, PokemonAbilityPastEffect
     from Moves import Move, DamageClass, MoveAilment, MoveBattleStyle, MoveEffect, MoveEffectChange
-    from Moves import MoveCategory, MoveLearnMethod, MoveTarget
+    from Moves import MoveCategory, MoveLearnMethod, MoveTarget, MoveFlag
     from Items import Item, ItemAttribute, ItemFlingEffect, ItemCategory, ItemPocket
     from Locations import Location, LocationArea, PalParkArea, Region
 
@@ -163,7 +163,7 @@ class VersionGroupTextEntry(TextEntry):
         text_key = super().get_unique_key()
         return text_key + ":" + str(self.version_group.poke_api_id)
 
-class NestedVersionGroupTextEntry(VersionGroupTextEntry):
+""" class NestedVersionGroupTextEntry(VersionGroupTextEntry):
     __mapper_args__ = {"polymorphic_abstract": True}
     # Uses local_language_id, unlike VersionGroupTextEntry
     relationship_attr_map = dict(TextEntry.relationship_attr_map)
@@ -173,7 +173,7 @@ class NestedVersionGroupTextEntry(VersionGroupTextEntry):
         super().__init__(data)
 
     def get_unique_key(self):
-        return super().get_unique_key()
+        return super().get_unique_key() """
 
 class VersionTextEntry(TextEntry):
     version_key: Mapped[int] = mapped_column(Integer, nullable=True)
@@ -1023,6 +1023,43 @@ class MoveTargetName(TextEntry):
     relationship_attr_map = dict(TextEntry.relationship_attr_map)
     relationship_attr_map.update({"move_target_id": ManyToOneAttrs("object_ref","object_key")})
     csv_data: CSVData = CSVData(**{"primary_csv": "move_target_prose.csv", "relationships": relationship_attr_map})
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.text_entry = data[self.text_entry_name]
+
+    def get_unique_key(self):
+        text_key = super().get_unique_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+    
+
+class MoveFlagDescription(TextEntry):
+    object_ref: Mapped["MoveFlag"] = relationship(back_populates="descriptions", cascade="save-update",
+                                            primaryjoin="MoveFlagDescription.object_key == MoveFlag.id",
+                                            foreign_keys="TextEntry.object_key")
+    __mapper_args__ = {"polymorphic_identity": "MoveFlagDescription"}
+    text_entry_name = "description"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"move_flag_id": ManyToOneAttrs("object_ref","object_key")})
+    csv_data: CSVData = CSVData(**{"primary_csv": "move_flag_prose.csv", "relationships": relationship_attr_map})
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.text_entry = data.description
+
+    def get_unique_key(self):
+        text_key = super().get_unique_key()
+        return text_key + ":" + str(self.object_ref.poke_api_id)  
+
+class MoveFlagName(TextEntry):
+    object_ref: Mapped["MoveFlag"] = relationship(back_populates="names", cascade="save-update",
+                                            primaryjoin="MoveFlagName.object_key == MoveFlag.id",
+                                            foreign_keys="TextEntry.object_key")
+    __mapper_args__ = {"polymorphic_identity": "MoveFlagName"}
+    text_entry_name = "name"
+    relationship_attr_map = dict(TextEntry.relationship_attr_map)
+    relationship_attr_map.update({"move_flag_id": ManyToOneAttrs("object_ref","object_key")})
+    csv_data: CSVData = CSVData(**{"primary_csv": "move_flag_prose.csv", "relationships": relationship_attr_map})
 
     def __init__(self, data):
         super().__init__(data)
