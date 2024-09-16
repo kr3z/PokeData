@@ -1,8 +1,9 @@
+import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, UniqueConstraint
+from sqlalchemy import Integer, SmallInteger, String, UniqueConstraint
 
-from Base import Base, ItemToItemAttributeLink, PokeApiResource, get_next_id
+from Base import Base, ItemToItemAttributeLink, PokeApiResource, get_next_id, CSVData, ManyToOneAttrs, ManyToManyAttr, MergeCSV, GroupByCSV
 
 if TYPE_CHECKING:
     from Berries import Berry
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
     from Moves import Machine
     from Pokemon import PokemonHeldItem
     from TextEntries import ItemFlavorText, ItemEffect, ItemName, ItemAttributeName, ItemAttributeDescription
-    from TextEntries import ItemFlingEffectEffect, ItemFlingEffectName, ItemCategoryName, ItemPocketName
+    from TextEntries import ItemFlingEffectEffect, ItemCategoryName, ItemPocketName
 
 class Item(Base, PokeApiResource):
     __tablename__ = "Item"
@@ -21,8 +22,6 @@ class Item(Base, PokeApiResource):
     fling_power: Mapped[Optional[int]] = mapped_column(SmallInteger)
     fling_effect_key: Mapped[Optional[int]] = mapped_column(Integer)
     category_key: Mapped[int] = mapped_column(Integer)
-    #baby_trigger_for_key: Mapped[Optional[int]] = mapped_column(Integer)
-    #berry_key: Mapped[Optional[int]] = mapped_column(Integer)
     sprite_url: Mapped[Optional[str]] = mapped_column(String(500))
 
     fling_effect: Mapped["ItemFlingEffect"] = relationship(back_populates="items", cascade="save-update",
@@ -31,15 +30,9 @@ class Item(Base, PokeApiResource):
     category: Mapped["ItemCategory"] = relationship(back_populates="items", cascade="save-update",
                                                     primaryjoin="Item.category_key == ItemCategory.id",
                                                     foreign_keys=category_key)
-    """ baby_trigger_for: Mapped["EvolutionChain"] = relationship(back_populates="baby_trigger_item",
-                                                              primaryjoin="Item.baby_trigger_for_key == EvolutionChain.id",
-                                                              foreign_keys=baby_trigger_for_key) """
     baby_trigger_for: Mapped["EvolutionChain"] = relationship(back_populates="baby_trigger_item", cascade="save-update",
                                                               primaryjoin="Item.id == foreign(EvolutionChain.baby_trigger_item_key)")
     
-    """ berry: Mapped["Berry"] = relationship(#back_populates="item",
-                                          primaryjoin="Item.berry_key == Berry.id",
-                                          foreign_keys=berry_key, cascade="save-update") """
     berry: Mapped["Berry"] = relationship(back_populates="item", cascade="save-update",
                                           primaryjoin="Item.id == foreign(Berry.item_key)")
 
@@ -67,52 +60,47 @@ class Item(Base, PokeApiResource):
                                                               primaryjoin="Item.id == foreign(ItemName.object_key)")
     
     _cache: Dict[int, "Item"] = {}
-
+    csv_data: CSVData = CSVData(**{"primary_csv": "items.csv", 
+                                   "merge_csvs": (MergeCSV("item_flag_map.csv", "item_id"),),
+                                   "group_by": GroupByCSV(['item_flag_id'], ['id','identifier','category_id','cost','fling_power','fling_effect_id']),
+                                   "relationships": {"category_id": ManyToOneAttrs("category", "category_key"),
+                                                     "fling_effect_id": ManyToOneAttrs("fling_effect", "fling_effect_key"),
+                                                     "item_flag_id": ManyToManyAttr("attributes")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Item_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "Item":
-        poke_api_id = data.id_
-        name = data.name
-        cost = data.cost
-        fling_power = data.fling_power
-        sprite_url = data.sprites.default
-
-        item = cls(poke_api_id=poke_api_id, name=name, cost=cost, fling_power=fling_power, sprite_url=sprite_url)
-        cls._cache[item.poke_api_id] = item
-        return item
+    def parse_csv(cls, df: pd.DataFrame) -> List["Item"]:
+        items = []
+        for id_, item_data in df.iterrows():
+            poke_api_id = id_
+            name = item_data.identifier
+            cost = item_data.cost
+            fling_power = item_data.fling_power
+            item = cls(poke_api_id=poke_api_id, name=name, cost=cost, fling_power=fling_power)
+            cls._cache[item.poke_api_id] = item
+            items.append(item)
+        return items
     
-    def __init__(self, poke_api_id: int, name: str, cost: int, fling_power: int, sprite_url: str):
+    def __init__(self, poke_api_id: int, name: str, cost: int, fling_power: int):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
         self.name = name
         self.cost = cost
         self.fling_power = fling_power
-        self.sprite_url = sprite_url
+        #self.sprite_url = sprite_url
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
         if self.cost != data.cost:
             self.cost = data.cost
         if self.fling_power != data.fling_power:
             self.fling_power = data.fling_power
-        if self.sprite_url != data.sprites.default:
-            self.sprite_url = data.sprites.default
+        #if self.sprite_url != data.sprites.default:
+        #    self.sprite_url = data.sprites.default
 
-'''class ItemHolder(Base):
-    __tablename__ = "ItemHolder"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    rarity: Mapped[int] = mapped_column(TinyInteger)
-    pokemon_key: Mapped[int] = mapped_column(Integer)
-    item_key: Mapped[int] = mapped_column(Integer)
-    version_key: Mapped[int] = mapped_column(Integer)
-
-    pokemon: Mapped["Pokemon"] = relationship
-    item: Mapped["Item"] = relationship
-    version: Mapped["Version"] = relationship'''
 
 class ItemAttribute(Base, PokeApiResource):
     __tablename__ = "ItemAttribute"
@@ -127,19 +115,21 @@ class ItemAttribute(Base, PokeApiResource):
                                                               primaryjoin="ItemAttribute.id == foreign(ItemAttributeDescription.object_key)")
     
     _cache: Dict[int, "ItemAttribute"] = {}
-
+    csv_data: CSVData = CSVData(**{"primary_csv": "item_flags.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemAttribute_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "ItemAttribute":
-        poke_api_id = data.id_
-        name = data.name
-
-        att = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[att.poke_api_id] = att
-        return att
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemAttribute"]:
+        attributes = []
+        for id_, attribute_data in df.iterrows():
+            poke_api_id = id_
+            name = attribute_data.identifier
+            attribute = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[attribute.poke_api_id] = attribute
+            attributes.append(attribute)
+        return attributes
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -147,8 +137,8 @@ class ItemAttribute(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class ItemCategory(Base, PokeApiResource):
     __tablename__ = "ItemCategory"
@@ -166,19 +156,22 @@ class ItemCategory(Base, PokeApiResource):
                                                               primaryjoin="ItemCategory.id == foreign(ItemCategoryName.object_key)")
     
     _cache: Dict[int, "ItemCategory"] = {}
-
+    csv_data: CSVData = CSVData(**{"primary_csv": "item_categories.csv", 
+                                   "relationships": {"pocket_id": ManyToOneAttrs("pocket", "pocket_key")}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemCategory_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "ItemCategory":
-        poke_api_id = data.id_
-        name = data.name
-
-        category = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[category.poke_api_id] = category
-        return category
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemCategory"]:
+        categories = []
+        for id_, category_data in df.iterrows():
+            poke_api_id = id_
+            name = category_data.identifier
+            category = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[category.poke_api_id] = category
+            categories.append(category)
+        return categories
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -186,8 +179,8 @@ class ItemCategory(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class ItemFlingEffect(Base, PokeApiResource):
     __tablename__ = "ItemFlingEffect"
@@ -198,22 +191,23 @@ class ItemFlingEffect(Base, PokeApiResource):
                                                primaryjoin="ItemFlingEffect.id == foreign(Item.fling_effect_key)")
     effect_entries: Mapped[List["ItemFlingEffectEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="ItemFlingEffect.id == foreign(ItemFlingEffectEffect.object_key)")
-    """ names: Mapped[List["ItemFlingEffectName"]] = relationship(back_populates="object_ref", cascade="save-update",
-                                                              primaryjoin="ItemFlingEffect.id == foreign(ItemFlingEffectName.object_key)") """
     _cache: Dict[int, "ItemFlingEffect"] = {}
+    csv_data: CSVData = CSVData(**{"primary_csv": "item_fling_effects.csv", "relationships": {}})
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemFlingEffect_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "ItemFlingEffect":
-        poke_api_id = data.id_
-        name = data.name
-
-        fling_effect = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[fling_effect.poke_api_id] = fling_effect
-        return fling_effect
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemFlingEffect"]:
+        effects = []
+        for id_, effect_data in df.iterrows():
+            poke_api_id = id_
+            name = effect_data.identifier
+            effect = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[effect.poke_api_id] = effect
+            effects.append(effect)
+        return effects
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -221,8 +215,8 @@ class ItemFlingEffect(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier
 
 class ItemPocket(Base, PokeApiResource):
     __tablename__ = "ItemPocket"
@@ -235,19 +229,22 @@ class ItemPocket(Base, PokeApiResource):
                                                               primaryjoin="ItemPocket.id == foreign(ItemPocketName.object_key)")
     
     _cache: Dict[int, "ItemPocket"] = {}
+    csv_data: CSVData = CSVData(**{"primary_csv": "item_pockets.csv", "relationships": {}})
 
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_ItemPocket_PokeApiId"),
     )
 
     @classmethod
-    def parse_data(cls,data) -> "ItemPocket":
-        poke_api_id = data.id_
-        name = data.name
-
-        pocket = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[pocket.poke_api_id] = pocket
-        return pocket
+    def parse_csv(cls, df: pd.DataFrame) -> List["ItemPocket"]:
+        pockets = []
+        for id_, pocket_data in df.iterrows():
+            poke_api_id = id_
+            name = pocket_data.identifier
+            pocket = cls(poke_api_id=poke_api_id, name=name)
+            cls._cache[pocket.poke_api_id] = pocket
+            pockets.append(pocket)
+        return pockets
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -255,5 +252,5 @@ class ItemPocket(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier

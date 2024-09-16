@@ -125,3 +125,4 @@ dmypy.json
 
 config.properties
 test.py
+pokeapi/

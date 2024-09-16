@@ -2,7 +2,10 @@ import os
 import logging
 import logging.config
 import configparser
-from typing import List, Optional, Tuple
+from enum import Enum
+from collections import namedtuple
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, TypedDict, Dict
 
 from sqlalchemy.orm import DeclarativeBase, sessionmaker, Mapped, mapped_column
 from sqlalchemy import create_engine, Sequence, URL, event, text, String, Integer, SmallInteger, Table, Column, ForeignKey, select
@@ -30,12 +33,51 @@ sqlalchemy_url = URL.create(
     database=db_name,
 )
 
+utf8mb4_2500 = String(2500).with_variant(mysql.VARCHAR(2500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
+utf8mb4_5000 = String(5000).with_variant(mysql.VARCHAR(5000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_1000 = String(1000).with_variant(mysql.VARCHAR(1000,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
+utf8mb4_500 = String(500).with_variant(mysql.VARCHAR(500,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_200 = String(200).with_variant(mysql.VARCHAR(200,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 utf8mb4_50 = String(50).with_variant(mysql.VARCHAR(50,collation='utf8mb4_unicode_520_ci'), 'mysql','mariadb')
 
 TinyInteger = SmallInteger().with_variant(mysql.TINYINT, 'mysql','mariadb')
 MediumInteger = Integer().with_variant(mysql.MEDIUMINT, 'mysql','mariadb') 
+
+ManyToOneAttrs = namedtuple('ManyToOneAttrs', ['ref', 'key'])
+ManyToManyAttr = namedtuple('ManyToManyAttr', ['ref'])
+
+class FilterOperation(Enum):
+    GREATERTHAN = 1
+    LESSTHAN = 2
+    EQUAL = 3
+
+@dataclass(frozen=True)
+class FilterCSV:
+    column_name: str
+    operation: FilterOperation
+    value: int
+
+@dataclass(frozen=True)
+class MergeCSV:
+    csv: str
+    merge_column: str
+    rename_columns: Optional[Dict[str,str]] = None # Dict[from,to]
+    filter: Optional[FilterCSV] = None
+
+@dataclass(frozen=True)
+class GroupByCSV:
+    agg_columns: List[str]
+    grouped_columns: List[str]
+
+@dataclass(frozen=True)
+class CSVData():
+    primary_csv: str
+    relationships: Dict[str,Tuple[str,str]]
+    merge_csvs: Optional[Tuple[MergeCSV, ...]] = ()
+    concat_csvs: Optional[Tuple[str, ...]] = ()
+    append_unique_attrs: Optional[Tuple[str,...]] = ()
+    group_by: Optional[GroupByCSV] = None
+
 
 class Base(DeclarativeBase):
     pass
@@ -68,15 +110,32 @@ def get_ids(nIds: int) -> List[int]:
     return ret_ids
     
 def fill_pool() -> None:
-    #conn = cls.getConnection()
-    #res = conn.executeQuery("SELECT NEXTVAL(id_seq),increment from id_seq")
     with Session() as session:
         res = session.execute(text("SELECT NEXTVAL(id_seq),increment from id_seq")).first()
-        #res = cls.singleQuery("SELECT NEXTVAL(id_seq),increment from id_seq")
         next_val = res[0]
         increment = res[1]
         logger.debug("Adding values %d to %d to id pool"  % (next_val,next_val+increment))
         _id_pool.extend(range(next_val,next_val+increment))
+
+class CSVResource:
+    csv_data: CSVData
+
+class PokeApiResource(CSVResource):
+    poke_api_id: Mapped[int] = mapped_column(Integer)
+
+    @classmethod
+    def get_from_cache(cls, cache_key: int) -> Tuple[Optional["PokeApiResource"], bool]:
+        needs_update = False
+        if cache_key not in cls._cache:
+            with Session() as session:
+                needs_update = True
+                cache_object = session.scalars(select(cls).filter_by(poke_api_id=cache_key)).first()
+                if cache_object:
+                    cls._cache[cache_object.poke_api_id] = cache_object
+        return cls._cache.get(cache_key), needs_update
+    
+    def recache(self):
+        self.__class__._cache[self.poke_api_id] = self
 
 RegionToVersionGroupLink = Table(
     "RegionToVersionGroupLink",
@@ -127,19 +186,16 @@ SuperContestComboLink = Table(
     Column("follow_up_move_key", ForeignKey("Move.id"), primary_key=True),
 )
 
-class PokeApiResource:
-    poke_api_id: Mapped[int] = mapped_column(Integer)
+SpeciesToEggGroupLink = Table(
+    "SpeciesToEggGroupLink",
+    Base.metadata,
+    Column("species_key", ForeignKey("PokemonSpecies.id"), primary_key=True),
+    Column("egg_group_key", ForeignKey("EggGroup.id"), primary_key=True),
+)
 
-    @classmethod
-    def get_from_cache(cls, cache_key: int) -> Tuple[Optional["PokeApiResource"], bool]:
-        needs_update = False
-        if cache_key not in cls._cache:
-            with Session() as session:
-                needs_update = True
-                cache_object = session.scalars(select(cls).filter_by(poke_api_id=cache_key)).first()
-                if cache_object:
-                    cls._cache[cache_object.poke_api_id] = cache_object
-        return cls._cache.get(cache_key), needs_update
-    
-    def recache(self):
-        self.__class__._cache[self.poke_api_id] = self
+MoveToMoveFlagLink = Table(
+    "MoveToMoveFlagLink",
+    Base.metadata,
+    Column("move_key", ForeignKey("Move.id"), primary_key=True),
+    Column("move_flag_key", ForeignKey("MoveFlag.id"), primary_key=True),
+)
