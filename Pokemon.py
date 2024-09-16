@@ -1,12 +1,11 @@
 import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, select, SmallInteger
+from sqlalchemy import Integer, String, Computed, UniqueConstraint, Boolean, SmallInteger
 
-from Base import Base, TinyInteger, Session, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, MergeCSV, FilterCSV, FilterOperation, SpeciesToEggGroupLink, GroupByCSV, ManyToManyAttr
+from Base import Base, TinyInteger, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, MergeCSV, FilterCSV, FilterOperation, SpeciesToEggGroupLink, GroupByCSV, ManyToManyAttr
 
 if TYPE_CHECKING:
-    #from Berries import BerryFlavor
     from Contests import ContestType
     from Encounters import Encounter
     from Evolution import EvolutionChain, EvolutionDetail
@@ -31,12 +30,6 @@ class PokemonAbility(Base, PokeApiResource):
                                             primaryjoin="Generation.id == PokemonAbility.generation_key",
                                             foreign_keys=generation_key)
     
-    #pokemon_ability_1: Mapped[List["Pokemon"]] = relationship(back_populates="ability_1", cascade="save-update",
-    #                                                          primaryjoin="PokemonAbility.id == foreign(Pokemon.ability_1_key)")
-    #pokemon_ability_2: Mapped[List["Pokemon"]] = relationship(back_populates="ability_2", cascade="save-update",
-    #                                                          primaryjoin="PokemonAbility.id == foreign(Pokemon.ability_2_key)")
-    #pokemon_hidden_ability: Mapped[List["Pokemon"]] = relationship(back_populates="hidden_ability", cascade="save-update",
-    #                                                          primaryjoin="PokemonAbility.id == foreign(Pokemon.hidden_ability_key)")
     pokemon_slots: Mapped[List["PokemonAbilityLink"]] = relationship(back_populates="ability", cascade="save-update",
                                                               primaryjoin="PokemonAbility.id == foreign(PokemonAbilityLink.ability_key)")
 
@@ -44,8 +37,6 @@ class PokemonAbility(Base, PokeApiResource):
                                                               primaryjoin="PokemonAbility.id == foreign(PokemonAbilityName.object_key)")
     effect_entries: Mapped[List["AbilityEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="PokemonAbility.id == foreign(AbilityEffect.object_key)")
-    #effect_changes: Mapped[List["AbilityEffectChange"]] = relationship(back_populates="object_ref", cascade="save-update",
-    #                                                          primaryjoin="PokemonAbility.id == foreign(AbilityEffectChange.object_key)")
     flavor_text_entries: Mapped[List["AbilityFlavorText"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="PokemonAbility.id == foreign(AbilityFlavorText.object_key)")
     __table_args__ = (
@@ -53,7 +44,6 @@ class PokemonAbility(Base, PokeApiResource):
     )
 
     _cache: Dict[int, "PokemonAbility"] = {}
-    #_csv = "abilities.csv"
     csv_data: CSVData = CSVData(**{"primary_csv": "abilities.csv", 
                                    "relationships": {"generation_id": ManyToOneAttrs("generation","generation_key")}})
     
@@ -68,15 +58,6 @@ class PokemonAbility(Base, PokeApiResource):
             cls._cache[ability.poke_api_id] = ability
             abilities.append(ability)
         return abilities
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonAbility":
-        poke_api_id = data.id_
-        name = data.name
-        is_main_series = data.is_main_series
-        ability = cls(poke_api_id=poke_api_id, name=name, is_main_series=is_main_series)
-        cls._cache[ability.poke_api_id] = ability
-        return ability """
     
     def __init__(self, poke_api_id: int, name: str, is_main_series: bool = is_main_series):
         self.id = get_next_id()
@@ -150,7 +131,6 @@ class PokemonCharacteristic(Base, PokeApiResource):
     )
 
     _cache: Dict[int, "PokemonCharacteristic"] = {}
-    #_csv = "characteristics.csv"
     csv_data: CSVData = CSVData(**{"primary_csv": "characteristics.csv", 
                                    "relationships": {"stat_id": ManyToOneAttrs("highest_stat","highest_stat_key")}})
 
@@ -164,14 +144,6 @@ class PokemonCharacteristic(Base, PokeApiResource):
             cls._cache[characteristic.poke_api_id] = characteristic
             characteristics.append(characteristic)
         return characteristics
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonCharacteristic":
-        poke_api_id = data.id_
-        gene_modulo = data.gene_modulo
-        characteristic = cls(poke_api_id=poke_api_id, gene_modulo=gene_modulo)
-        cls._cache[characteristic.poke_api_id] = characteristic
-        return characteristic """
     
     def __init__(self, poke_api_id: int, gene_modulo: int = gene_modulo):
         self.id = get_next_id()
@@ -190,10 +162,6 @@ class EggGroup(Base, PokeApiResource):
 
     names: Mapped[List["EggGroupName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                         primaryjoin="EggGroup.id == foreign(EggGroupName.object_key)")
-    """ species_egg_group_1: Mapped[List["PokemonSpecies"]] = relationship(back_populates="egg_group_1", cascade="save-update",
-                                                        primaryjoin="EggGroup.id == foreign(PokemonSpecies.egg_group_1_key)")
-    species_egg_group_2: Mapped[List["PokemonSpecies"]] = relationship(back_populates="egg_group_2", cascade="save-update",
-                                                        primaryjoin="EggGroup.id == foreign(PokemonSpecies.egg_group_2_key)") """
     
     species: Mapped[List["PokemonSpecies"]] = relationship(back_populates="egg_groups", secondary=SpeciesToEggGroupLink, cascade="save-update")
 
@@ -216,15 +184,6 @@ class EggGroup(Base, PokeApiResource):
             eggs.append(egg)
         return eggs
     
-    """ @classmethod
-    def parse_data(cls,data) -> "EggGroup":
-    #def parse_egg_group(cls,data) -> "EggGroup":
-        poke_api_id = data.id_
-        name = data.name
-        egg_group = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[egg_group.poke_api_id] = egg_group
-        return egg_group """
-    
     def __init__(self, poke_api_id: int, name: str,):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -234,18 +193,6 @@ class EggGroup(Base, PokeApiResource):
         if self.name != data.identifier:
             self.name = data.identifier
 
-# I don't think this is something I need
-# Its not referenced by anything else
-'''class GenderEvolution(Base):
-    __tablename__ = "GenderEvolution"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
-    pokemon_species_key: Mapped[int] = mapped_column(Integer)
-
-    pokemon_species: Mapped["PokemonSpecies"] = relationship(back_populates="",
-                                            primaryjoin="PokemonSpecies.id == GenderEvolution.pokemon_species_key",
-                                            foreign_keys=pokemon_species_key)
-'''
 class GrowthRate(Base, PokeApiResource):
     __tablename__ = "GrowthRate"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
@@ -279,15 +226,6 @@ class GrowthRate(Base, PokeApiResource):
             rates.append(rate)
         return rates
     
-    """ @classmethod
-    def parse_data(cls,data) -> "GrowthRate":
-        poke_api_id = data.id_
-        name = data.name
-        formula = data.formula
-        rate = cls(poke_api_id=poke_api_id, name=name, formula=formula)
-        cls._cache[rate.poke_api_id] = rate
-        return rate """
-    
     def __init__(self, poke_api_id: int, name: str, formula: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -318,19 +256,9 @@ class GrowthRateExperienceLevel(Base):
                           "relationships": {
                                             "growth_rate_id": ManyToOneAttrs("growth_rate", "growth_rate_key")},
                             "append_unique_attrs":("level",)})
-
-    """ @classmethod
-    def parse_data(cls,data) -> "GrowthRateExperienceLevel":
-        #poke_api_id = data.id_
-        level = data.level
-        experience = data.experience
-        exp_level = cls(level=level, experience=experience)
-        #cls._cache[exp_level.poke_api_id] = exp_level
-        return exp_level """
     
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        #self.poke_api_id = poke_api_id
         self.level = data.level
         self.experience = data.experience
 
@@ -376,7 +304,6 @@ class PokemonNature(Base, PokeApiResource):
                                             primaryjoin="ContestType.id == PokemonNature.likes_flavor_key",
                                             foreign_keys=likes_flavor_key)
 
-    #pokeathlon_stat_changes # I don't think this is needed, with the stat changes included in this class
     move_battle_style_preferences: Mapped[List["MoveBattleStylePreference"]] = relationship(back_populates="pokemon_nature",
                                                               primaryjoin="PokemonNature.id == foreign(MoveBattleStylePreference.pokemon_nature_key)")
 
@@ -420,15 +347,6 @@ class PokemonNature(Base, PokeApiResource):
             cls._cache[nature.poke_api_id] = nature
             natures.append(nature)
         return natures
-
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonNature":
-        poke_api_id = data.id_
-        name = data.name
-
-        nature = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[nature.poke_api_id] = nature
-        return nature """
     
     def __init__(self, poke_api_id: int, name: str, game_index: int, max_pokeathlon_decrease: int, max_pokeathlon_increase: int):
         self.id = get_next_id()
@@ -472,33 +390,6 @@ class MoveBattleStylePreference(Base, CSVResource):
         UniqueConstraint("pokemon_nature_key","move_battle_style_key",name="ux_MBSP_Nature_MBS"),
     )
 
-    """ @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["MoveBattleStylePreference"]:
-        mbsps = []
-        for id_, mbsp_data in df.iterrows():
-            low_hp_preference = mbsp_data.low_hp_preference
-            high_hp_preference = mbsp_data.high_hp_preference
-
-            mbsp = cls(low_hp_preference=low_hp_preference, high_hp_preference=high_hp_preference)
-            #cls._cache[mbsp.poke_api_id] = mbsp
-            mbsps.append(mbsp)
-        return mbsps """
-
-    """ @classmethod
-    def parse_data(cls,data) -> "MoveBattleStylePreference":
-        #poke_api_id = data.id_
-        low_hp_preference = data.low_hp_preference
-        high_hp_preference = data.high_hp_preference
-
-        mbsp = cls(low_hp_preference=low_hp_preference, high_hp_preference=high_hp_preference)
-        #cls._cache[mbsp.poke_api_id] = mbsp
-        return mbsp """
-    
-    """ def __init__(self, low_hp_preference: int, high_hp_preference: int):
-        self.id = get_next_id()
-        #self.poke_api_id = poke_api_id
-        self.low_hp_preference = low_hp_preference
-        self.high_hp_preference = high_hp_preference """
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
         self.low_hp_preference = data.low_hp_preference
@@ -544,15 +435,6 @@ class PokeathlonStat(Base, PokeApiResource):
             stats.append(stat)
         return stats
     
-    """ @classmethod
-    def parse_data(cls,data) -> "PokeathlonStat":
-        poke_api_id = data.id_
-        name = data.name
-
-        stat = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[stat.poke_api_id] = stat
-        return stat """
-    
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -574,20 +456,12 @@ class Pokemon(Base, PokeApiResource):
     is_default: Mapped[bool] = mapped_column(Boolean)
     order: Mapped[Optional[int]] = mapped_column(Integer)
 
-    #type_1_key: Mapped[int] = mapped_column(Integer)
-    #type_2_key: Mapped[Optional[int]] = mapped_column(Integer)
-    #ability_1_key: Mapped[int] = mapped_column(Integer)
-    #ability_2_key: Mapped[Optional[int]] = mapped_column(Integer)
-    #hidden_ability_key: Mapped[Optional[int]] = mapped_column(Integer)
-
-
     hp: Mapped[int] = mapped_column(Integer)
     attack: Mapped[int] = mapped_column(Integer)
     defense: Mapped[int] = mapped_column(Integer)
     special_attack: Mapped[int] = mapped_column(Integer)
     special_defense: Mapped[int] = mapped_column(Integer)
     speed: Mapped[int] = mapped_column(Integer)
-    # virtual computed column?
     bst: Mapped[int] = mapped_column(Integer,Computed('hp+attack+defense+special_attack+special_defense+speed',persisted=False))
 
     hp_ev: Mapped[Optional[int]] = mapped_column(Integer)
@@ -601,24 +475,9 @@ class Pokemon(Base, PokeApiResource):
                                             primaryjoin="Pokemon.species_key == PokemonSpecies.id",
                                             foreign_keys=species_key)
     
-    #type_1: Mapped["PokemonType"] = relationship(back_populates="main_types", cascade="save-update",
-    #                                        primaryjoin="Pokemon.type_1_key == PokemonType.id",
-    #                                        foreign_keys=type_1_key)
-    #type_2: Mapped["PokemonType"] = relationship(back_populates="secondary_types", cascade="save-update",
-    #                                        primaryjoin="Pokemon.type_2_key == PokemonType.id",
-    #                                        foreign_keys=type_2_key)
     type_slots: Mapped[List["AbstractPokemonTypeLink"]] = relationship(back_populates="pokemon", cascade="save-update",
                                                          primaryjoin="foreign(AbstractPokemonTypeLink.object_key) == Pokemon.id")
 
-    #ability_1: Mapped["PokemonAbility"] = relationship(back_populates="pokemon_ability_1", cascade="save-update",
-    #                                        primaryjoin="Pokemon.ability_1_key == PokemonAbility.id",
-    #                                        foreign_keys=ability_1_key)
-    #ability_2: Mapped["PokemonAbility"] = relationship(back_populates="pokemon_ability_2", cascade="save-update",
-    #                                        primaryjoin="Pokemon.ability_2_key == PokemonAbility.id",
-    #                                        foreign_keys=ability_2_key)
-    #hidden_ability: Mapped["PokemonAbility"] = relationship(back_populates="pokemon_hidden_ability", cascade="save-update",
-    #                                        primaryjoin="Pokemon.hidden_ability_key == PokemonAbility.id",
-    #                                        foreign_keys=hidden_ability_key)
     ability_slots: Mapped[List["PokemonAbilityLink"]] = relationship(back_populates="pokemon", cascade="save-update",
                                                                primaryjoin="Pokemon.id == foreign(PokemonAbilityLink.pokemon_key)")
 
@@ -631,16 +490,12 @@ class Pokemon(Base, PokeApiResource):
     held_items: Mapped[List["PokemonHeldItem"]] = relationship(back_populates="pokemon", cascade="save-update",
                                             primaryjoin="Pokemon.id == foreign(PokemonHeldItem.pokemon_key)")
     
-    #pokemon_encounters: Mapped[List["PokemonEncounter"]] = relationship(back_populates="pokemon", cascade="save-update",
-    #                                        primaryjoin="Pokemon.id == foreign(PokemonEncounter.pokemon_key)")
     encounters: Mapped[List["Encounter"]] = relationship(back_populates="pokemon", cascade="save-update",
                                                          primaryjoin="Pokemon.id == foreign(Encounter.pokemon_key)")
     
     moves: Mapped[List["PokemonMove"]] = relationship(back_populates="pokemon", cascade="save-update",
                                             primaryjoin="Pokemon.id == foreign(PokemonMove.pokemon_key)")
     
-    #past_types: Mapped[List["PastTypeLink"]] = relationship(back_populates="pokemon", cascade="save-update",
-    #                                        primaryjoin="Pokemon.id == foreign(PastTypeLink.pokemon_key)")
  
     evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="pokemon", cascade="save-update",
                                                                       primaryjoin="Pokemon.id == foreign(EvolutionDetail.pokemon_key)")
@@ -657,11 +512,6 @@ class Pokemon(Base, PokeApiResource):
     csv_data: CSVData = CSVData(**{"primary_csv": "pokemon.csv", 
                         "relationships": {
                             "species_id": ManyToOneAttrs("species","species_key"),
-                            #"type_1_id": ManyToOneAttrs("type_1","type_1_key"),
-                            #"type_2_id": ManyToOneAttrs("type_2","type_2_key"),
-                            #"ability_1_id": ManyToOneAttrs("ability_1","ability_1_key"),
-                            #"ability_2_id": ManyToOneAttrs("ability_2", "ability_2_key"),
-                            #"hidden_ability_id": ManyToOneAttrs("hidden_ability","hidden_ability_key")
                         },
                         "merge_csvs": (MergeCSV("pokemon_stats.csv", "pokemon_id", 
                                                 rename_columns={"base_stat": "hp", 
@@ -722,20 +572,6 @@ class Pokemon(Base, PokeApiResource):
             cls._cache[pkmn.poke_api_id] = pkmn
             pkmns.append(pkmn)
         return pkmns
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "Pokemon":
-        poke_api_id = data.id_
-        name = data.name
-        base_experience = data.base_experience
-        height = data.height
-        weight = data.weight
-        is_default = data.is_default
-        order = data.order
-
-        pokemon = cls(poke_api_id=poke_api_id, name=name, base_experience=base_experience, height=height, weight=weight, is_default=is_default, order=order)
-        cls._cache[pokemon.poke_api_id] = pokemon
-        return pokemon """
     
     def __init__(self, poke_api_id: int, name: str, base_experience: int, height: int, weight: int, is_default: bool, order: int, hp: int, hp_ev: int, attack: int, attack_ev: int,
                  defense: int, defense_ev: int, special_attack: int, special_attack_ev: int, special_defense: int, special_defense_ev: int, speed: int, speed_ev: int):
@@ -849,7 +685,6 @@ class PokemonAbilityLink(Base, CSVResource):
         # so the combination of pokemon/ability is not unique
         # Need to also add in slot
         return str(self.slot) + ":" + str(self.pokemon.poke_api_id) + ":" + str(self.ability.poke_api_id) + ":" + str(gen_id)
-        #return str(self.pokemon.poke_api_id) + ":" + str(self.ability.poke_api_id) + ":" + str(gen_id)
 
 
 class AbstractTypeLink(Base, CSVResource):
@@ -885,8 +720,6 @@ class AbstractTypeLink(Base, CSVResource):
 
     def get_unique_key(self):
         return str(self.type_.poke_api_id)
-        #gen_id = self.generation.poke_api_id if self.generation else None
-        #return str(self.pokemon.poke_api_id) + ":" + str(self.type_.poke_api_id) + ":" + str(gen_id)
     
 class AbstractPokemonTypeLink(AbstractTypeLink):
     
@@ -1011,9 +844,6 @@ class PokemonMove(Base, CSVResource):
                                             primaryjoin="Pokemon.id == PokemonMove.pokemon_key",
                                             foreign_keys=pokemon_key)
     
-    """ affecting_stats: Mapped[List["MoveStatAffect"]] = relationship(back_populates="move",
-                                                                   primaryjoin="PokemonMove.id == foreign(MoveStatAffect.move_key)") """
-    
     table_args__ = (
         UniqueConstraint("pokemon_key","move_key","version_group_key", "move_learn_method_key",name="ux_PokemonMove_PkmnMoveVGMethod"),
     )
@@ -1066,14 +896,6 @@ class PokemonColor(Base, PokeApiResource):
             colors.append(color)
         return colors
     
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonColor":
-        poke_api_id = data.id_
-        name = data.name
-        color = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[color.poke_api_id] = color
-        return color """
-    
     def __init__(self, poke_api_id: int, name: str,):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -1095,18 +917,11 @@ class PokemonForm(Base, PokeApiResource):
     is_mega: Mapped[bool] = mapped_column(Boolean)
     form_name: Mapped[Optional[str]] = mapped_column(String(100))
     version_group_key: Mapped[int] = mapped_column(Integer)
-    #type_1_key: Mapped[int] = mapped_column(Integer)
-    #type_2_key: Mapped[Optional[int]] = mapped_column(Integer)
 
     pokemon: Mapped["Pokemon"] = relationship(back_populates="forms", cascade="save-update",
                                             primaryjoin="PokemonForm.pokemon_key == Pokemon.id",
                                             foreign_keys=pokemon_key)
     
-    #type_1: Mapped["PokemonType"] = relationship(primaryjoin="PokemonForm.type_1_key == PokemonType.id",
-    #                                        foreign_keys=type_1_key, cascade="save-update")
-    
-    #type_2: Mapped["PokemonType"] = relationship(primaryjoin="PokemonForm.type_2_key == PokemonType.id",
-    #                                        foreign_keys=type_2_key, cascade="save-update")
     type_slots: Mapped[List["PokemonFormTypeLink"]] = relationship(back_populates="form", cascade="save-update",
                                                                    primaryjoin="PokemonForm.id == foreign(PokemonFormTypeLink.object_key)")
 
@@ -1156,19 +971,6 @@ class PokemonForm(Base, PokeApiResource):
             forms.append(form)
         return forms
     
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonForm":
-        poke_api_id = data.id_
-        name = data.name
-        order = data.order
-        form_order = data.form_order
-        is_default = data.is_default
-        is_battle_only = data.is_battle_only
-        is_mega = data.is_mega
-
-        form = cls(poke_api_id=poke_api_id, name=name, order=order, form_order=form_order, is_default=is_default, is_battle_only=is_battle_only, is_mega=is_mega)
-        cls._cache[form.poke_api_id] = form
-        return form """
     
     def __init__(self, poke_api_id: int, name: str, form_name: str, order: int, form_order: int, is_default: bool, is_battle_only: bool, is_mega: bool):
         self.id = get_next_id()
@@ -1267,14 +1069,6 @@ class PokemonHabitat(Base, PokeApiResource):
             cls._cache[habitat.poke_api_id] = habitat
             habitats.append(habitat)
         return habitats
-
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonHabitat":
-        poke_api_id = data.id_
-        name = data.name
-        habitat = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[habitat.poke_api_id] = habitat
-        return habitat """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -1320,14 +1114,6 @@ class PokemonShape(Base, PokeApiResource):
             shapes.append(shape)
         return shapes
     
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonShape":
-        poke_api_id = data.id_
-        name = data.name
-        shape = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[shape.poke_api_id] = shape
-        return shape """
-    
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -1340,8 +1126,6 @@ class PokemonShape(Base, PokeApiResource):
 class PokemonSpecies(Base, PokeApiResource):
     __tablename__ = "PokemonSpecies"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    #pokeapi_id: Mapped[int] = mapped_column(Integer)
-    #national_dex_number: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(100))
     order: Mapped[int] = mapped_column(Integer)
     gender_rate: Mapped[int] = mapped_column(TinyInteger)
@@ -1363,11 +1147,7 @@ class PokemonSpecies(Base, PokeApiResource):
     habitat_key: Mapped[Optional[int]] = mapped_column(Integer)
     growth_rate_key: Mapped[int] = mapped_column(Integer)
 
-    """ egg_group_1_key: Mapped[int] = mapped_column(Integer)
-    egg_group_2_key: Mapped[Optional[int]] = mapped_column(Integer) """
-
     __table_args__ = (
-        #UniqueConstraint("national_dex_number",name="ux_PokemonSpecies_NatDexId"),
         UniqueConstraint("poke_api_id",name="ux_PokemonSpecies_PokeApiId"),
         UniqueConstraint("name",name="ux_PokemonSpecies_name"),
     )
@@ -1400,14 +1180,6 @@ class PokemonSpecies(Base, PokeApiResource):
     growth_rate: Mapped["GrowthRate"] = relationship(back_populates="pokemon_species", cascade="save-update",
                                             primaryjoin="GrowthRate.id == PokemonSpecies.growth_rate_key",
                                             foreign_keys=growth_rate_key)
-
-
-    """ egg_group_1: Mapped["EggGroup"] = relationship(back_populates="species_egg_group_1", cascade="save-update",
-                                            primaryjoin="EggGroup.id == PokemonSpecies.egg_group_1_key",
-                                            foreign_keys=egg_group_1_key)
-    egg_group_2: Mapped["EggGroup"] = relationship(back_populates="species_egg_group_2", cascade="save-update",
-                                            primaryjoin="EggGroup.id == PokemonSpecies.egg_group_2_key",
-                                            foreign_keys=egg_group_2_key) """
     
     egg_groups: Mapped[List["EggGroup"]] = relationship(back_populates="species", secondary=SpeciesToEggGroupLink, cascade="save-update")
     
@@ -1443,7 +1215,6 @@ class PokemonSpecies(Base, PokeApiResource):
     genera: Mapped[List["PokemonGenus"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                       primaryjoin="PokemonSpecies.id == foreign(PokemonGenus.object_key)")
     
-    # map nat dex number to PokemonSpecies object
     _cache: Dict[int, "PokemonSpecies"] = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_species.csv",
                                    "merge_csvs": (MergeCSV("pokemon_egg_groups.csv", "species_id"),),
@@ -1482,40 +1253,6 @@ class PokemonSpecies(Base, PokeApiResource):
             cls._cache[species.poke_api_id] = species
             speciess.append(species)
         return speciess
-
-    @classmethod
-    def parse_data(cls,data):
-        """ atts = {}
-        atts['poke_api_id'] = data.id
-        atts['name'] = data.name
-        atts['order'] = data.order
-        atts['gender_rate'] = data.gender_rate
-        atts['capture_rate'] = data.capture_rate
-        atts['base_happiness'] = data.base_happiness
-        atts['is_baby'] = data.is_baby
-        atts['is_legendary'] = data.is_legendary
-        atts['is_mythical'] = data.is_mythical
-        atts['hatch_counter'] = data.hatch_counter
-        atts['has_gender_differences'] = data.has_gender_differences
-        atts['forms_switchable'] = data.forms_switchable """
-
-        poke_api_id = data.id_
-        name = data.name
-        order = data.order
-        gender_rate = data.gender_rate
-        capture_rate = data.capture_rate
-        base_happiness = data.base_happiness
-        is_baby = data.is_baby
-        is_legendary = data.is_legendary
-        is_mythical = data.is_mythical
-        hatch_counter = data.hatch_counter
-        has_gender_differences = data.has_gender_differences
-        forms_switchable = data.forms_switchable
-
-        species = cls(poke_api_id=poke_api_id, name=name, order=order, gender_rate=gender_rate, capture_rate=capture_rate, base_happiness=base_happiness, is_baby=is_baby,
-                      is_legendary=is_legendary, is_mythical=is_mythical, hatch_counter=hatch_counter, has_gender_differences=has_gender_differences, forms_switchable=forms_switchable)
-        cls._cache[species.poke_api_id] = species
-        return species
     
     def __init__(self, poke_api_id: int, name: str, order: int, gender_rate: int, capture_rate: int, base_happiness: int, is_baby: bool,
                       is_legendary: bool, is_mythical: bool, hatch_counter: int, has_gender_differences: bool, forms_switchable: bool, conquest_order: int):
@@ -1571,8 +1308,6 @@ class PokemonStat(Base, PokeApiResource):
     is_battle_only: Mapped[Optional[bool]] = mapped_column(Boolean)
     damage_class_key: Mapped[Optional[int]] = mapped_column(Integer)
 
-    """ affecting_moves: Mapped[List["MoveStatAffect"]] = relationship(back_populates="stat",
-                                                                   primaryjoin="PokemonStat.id == foreign(MoveStatAffect.stat_key)") """
     changing_moves: Mapped[List["MoveStatChange"]] = relationship(back_populates="stat", cascade="save-update",
                                                                    primaryjoin="PokemonStat.id == foreign(MoveStatChange.stat_key)") 
     
@@ -1580,10 +1315,7 @@ class PokemonStat(Base, PokeApiResource):
                                                               primaryjoin="PokemonStat.id == foreign(PokemonNature.decreased_stat_key)")
     increasing_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="increased_stat", cascade="save-update",
                                                               primaryjoin="PokemonStat.id == foreign(PokemonNature.increased_stat_key)")
-    """ decreasing_pokeathlon_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="decreased_pokeathlon_stat",
-                                                              primaryjoin="PokemonStat.id == foreign(PokemonNature.decreased_pokeathlon_stat_key)")
-    increasing_pokeathlon_natures: Mapped[List["PokemonNature"]] = relationship(back_populates="increased_pokeathlon_stat",
-                                                              primaryjoin="PokemonStat.id == foreign(PokemonNature.increased_pokeathlon_stat_key)") """
+
     characteristics: Mapped[List["PokemonCharacteristic"]] = relationship(back_populates="highest_stat", cascade="save-update",
                                                               primaryjoin="PokemonStat.id == foreign(PokemonCharacteristic.highest_stat_key)")
 
@@ -1614,17 +1346,6 @@ class PokemonStat(Base, PokeApiResource):
             cls._cache[stat.poke_api_id] = stat
             stats.append(stat)
         return stats
-
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonStat":
-        poke_api_id = data.id_
-        name = data.name
-        game_index = data.game_index
-        is_battle_only = data.is_battle_only
-
-        stat = cls(poke_api_id=poke_api_id, name=name, game_index=game_index, is_battle_only=is_battle_only)
-        cls._cache[stat.poke_api_id] = stat
-        return stat """
     
     def __init__(self, poke_api_id: int, name: str, game_index: int, is_battle_only: bool):
         self.id = get_next_id()
@@ -1641,20 +1362,6 @@ class PokemonStat(Base, PokeApiResource):
         if self.is_battle_only != data.is_battle_only:
             self.is_battle_only = data.is_battle_only
 
-""" class MoveStatAffect(Base):
-    __tablename__ = "MoveStatAffect"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    move_key: Mapped[int] = mapped_column(Integer)
-    stat_key: Mapped[int] = mapped_column(Integer)
-    change: Mapped[int] = mapped_column(TinyInteger)
-
-    move: Mapped["PokemonMove"] = relationship(back_populates="affecting_stats",
-                                               primaryjoin="MoveStatAffect.move_key == PokemonMove.id",
-                                               foreign_keys=move_key)
-    stat: Mapped["PokemonStat"] = relationship(back_populates="affecting_moves",
-                                               primaryjoin="MoveStatAffect.stat_key == PokemonStat.id",
-                                               foreign_keys=stat_key) """
-
 # Types
 class PokemonType(Base, PokeApiResource): 
     __tablename__ = "PokemonType"
@@ -1666,7 +1373,6 @@ class PokemonType(Base, PokeApiResource):
     generation_introduced: Mapped["Generation"] = relationship(back_populates="types_introduced", cascade="save-update",
                                                                primaryjoin="PokemonType.generation_introduced_key == Generation.id",
                                                                foreign_keys=generation_introduced_key)
-    #generations: Mapped[List["Generation"]] = relationship
     damage_class: Mapped["DamageClass"] = relationship(back_populates="types", cascade="save-update",
                                                        primaryjoin="PokemonType.damage_class_key == DamageClass.id",
                                                        foreign_keys=damage_class_key)
@@ -1676,10 +1382,6 @@ class PokemonType(Base, PokeApiResource):
     defensive_relations: Mapped[List["PokemonTypeRelation"]] = relationship(back_populates="defensive_type", cascade="save-update",
                                                                             primaryjoin="PokemonType.id == foreign(PokemonTypeRelation.defensive_type_key)")
 
-    #main_types: Mapped[List["Pokemon"]] = relationship(back_populates="type_1", cascade="save-update",
-    #                                                          primaryjoin="PokemonType.id == foreign(Pokemon.type_1_key)")
-    #secondary_types: Mapped[List["Pokemon"]] = relationship(back_populates="type_2", cascade="save-update",
-    #                                                          primaryjoin="PokemonType.id == foreign(Pokemon.type_2_key)")
     pokemon_slots: Mapped[List["AbstractTypeLink"]] = relationship(back_populates="type_", cascade="save-update",
                                                                   primaryjoin="PokemonType.id == foreign(AbstractTypeLink.type_key)")
     moves: Mapped[List["Move"]] = relationship(back_populates="move_type", cascade="save-update",
@@ -1718,15 +1420,6 @@ class PokemonType(Base, PokeApiResource):
             types_.append(type_)
         return types_
     
-    """ @classmethod
-    def parse_data(cls,data) -> "PokemonType":
-        poke_api_id = data.id_
-        name = data.name
-
-        type_ = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[type_.poke_api_id] = type_
-        return type_ """
-    
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -1735,30 +1428,6 @@ class PokemonType(Base, PokeApiResource):
     def compare(self, data):
         if self.name != data.identifier:
             self.name = data.identifier
-
-""" class PastTypeLink(Base, CSVResource):
-    __tablename__ = "PastTypeLink"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    last_generation_key: Mapped[int] = mapped_column(Integer)
-    pokemon_key: Mapped[int] = mapped_column(Integer)
-    type_1_key: Mapped[int] = mapped_column(Integer)
-    type_2_key: Mapped[Optional[int]] = mapped_column(Integer)
-
-    last_generation: Mapped["Generation"] = relationship(primaryjoin="PastTypeLink.last_generation_key == Generation.id",
-                                                         foreign_keys=last_generation_key, cascade="save-update")
-    pokemon: Mapped["Pokemon"] = relationship(back_populates="past_types", cascade="save-update",
-                                            primaryjoin="Pokemon.id == PastTypeLink.pokemon_key",
-                                            foreign_keys=pokemon_key)
-    
-    #uni-drectional? No need to reference on PokemonTYpe?
-    type_1: Mapped["PokemonType"] = relationship(primaryjoin="PastTypeLink.type_1_key == PokemonType.id",
-                                                    foreign_keys=type_1_key, cascade="save-update")
-    
-    type_2: Mapped["PokemonType"] = relationship(primaryjoin="PastTypeLink.type_2_key == PokemonType.id",
-                                                    foreign_keys=type_2_key, cascade="save-update")
-    
-    def __init__(self):
-        self.id = get_next_id() """
 
 
 
@@ -1789,25 +1458,6 @@ class PokemonTypeRelation(Base, CSVResource):
                              "target_type_id": ManyToOneAttrs("defensive_type","defensive_type_key"),
                              "generation_id": ManyToOneAttrs("generation", "generation_key")
                          }})
-    
-    """ @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["PokemonTypeRelation"]:
-        relations = []
-        for id_, relation_data in df.iterrows():
-            poke_api_id = id_
-            damage_factor = relation_data.damage_factor
-            relation = cls(poke_api_id=poke_api_id, damage_factor=damage_factor)
-            #cls._cache[type_.poke_api_id] = type_
-            relations.append(relation)
-        return relations """
-    
-    """ @classmethod
-    def parse_data(cls,damage_multiplier: float) -> "PokemonTypeRelation":
-        damage_multiplier = damage_multiplier
-
-        relation = cls(damage_multiplier=damage_multiplier)
-        #cls._cache[type_.poke_api_id] = type_
-        return relation """
     
     def __init__(self, data: pd.Series):
         self.id = get_next_id()

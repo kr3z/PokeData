@@ -16,15 +16,10 @@ class EvolutionChain(Base, PokeApiResource):
     __tablename__ = "EvolutionChain"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     baby_trigger_item_key: Mapped[Optional[int]] = mapped_column(Integer)
-    #chain_key: Mapped[int] = mapped_column(Integer)
 
     baby_trigger_item: Mapped["Item"] = relationship(back_populates="baby_trigger_for",
                                                      primaryjoin="EvolutionChain.baby_trigger_item_key == Item.id",
                                                      foreign_keys=baby_trigger_item_key, cascade="save-update")
-    
-    #chain: Mapped["ChainLink"] = relationship(#back_populates="evolution_chain",
-    #                                          primaryjoin="EvolutionChain.chain_key == ChainLink.id",
-    #                                          foreign_keys=chain_key, cascade="save-update")
     
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_EvolutionChain_PokeApiId"),
@@ -42,13 +37,6 @@ class EvolutionChain(Base, PokeApiResource):
             cls._cache[chain.poke_api_id] = chain
             chains.append(chain)
         return chains
-
-    """ @classmethod
-    def parse_data(cls,data) -> "EvolutionChain":
-        poke_api_id = data.id
-        evolution_chain = cls(poke_api_id=poke_api_id)
-        cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return evolution_chain """
     
     def __init__(self, poke_api_id: int):
         self.id = get_next_id()
@@ -57,48 +45,10 @@ class EvolutionChain(Base, PokeApiResource):
     def compare(self, data):
         pass
 
-""" class ChainLink(Base):
-    __tablename__ = "ChainLink"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    is_baby: Mapped[bool] = mapped_column(Boolean)
-    species_key: Mapped[int] = mapped_column(Integer)
-    evolves_from_key: Mapped[Optional[int]] = mapped_column(Integer)
-    #chain: Mapped["ChainLink"] = relationship
-    evolves_from: Mapped["ChainLink"] = relationship(back_populates="evolves_to", remote_side=id, cascade="save-update",
-                                                          primaryjoin="ChainLink.evolves_from_key == ChainLink.id",
-                                                          foreign_keys=evolves_from_key)
-    evolves_to: Mapped[List["ChainLink"]] = relationship(back_populates="evolves_from", cascade="save-update",
-                                                              primaryjoin="ChainLink.id == foreign(ChainLink.evolves_from_key)")
-    evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="chain_link", cascade="save-update",
-                                                                      primaryjoin="ChainLink.id == foreign(EvolutionDetail.chain_link_key)")
-    species: Mapped["PokemonSpecies"] = relationship(#back_populates="evolution_chain",
-                                                     primaryjoin="ChainLink.species_key == PokemonSpecies.id",
-                                                     foreign_keys=species_key, cascade="save-update")
-
-    __table_args__ = (
-        UniqueConstraint("species_key",name="ux_ChainLink_SpeciesKey"),
-    )
-
-    @classmethod
-    def parse_data(cls,data) -> "ChainLink":
-        #poke_api_id = data.id
-        chain = cls(is_baby = data.is_baby)
-        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return chain
-    
-    def __init__(self, is_baby: bool):
-        self.id = get_next_id()
-        self.is_baby = is_baby
-
-    def compare(self, data):
-        if self.is_baby != data.is_baby:
-            self.is_baby = data.is_baby """
-
 
 class EvolutionDetail(Base, PokeApiResource):
     __tablename__ = "EvolutionDetail"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    #chain_link_key: Mapped[int] = mapped_column(Integer)
     pokemon_key: Mapped[Optional[int]] = mapped_column(Integer)
 
     evolved_species_key: Mapped[int] = mapped_column(Integer)
@@ -122,9 +72,6 @@ class EvolutionDetail(Base, PokeApiResource):
     time_of_day: Mapped[Optional[str]] = mapped_column(String(10))
     turn_upside_down: Mapped[bool] = mapped_column(Boolean)
 
-    #chain_link: Mapped["ChainLink"] = relationship(back_populates="evolution_details", cascade="save-update",
-    #                                                         primaryjoin="EvolutionDetail.chain_link_key == ChainLink.id",
-    #                                                         foreign_keys=chain_link_key)
     pokemon: Mapped["Pokemon"] = relationship(back_populates="evolution_details", cascade="save-update",
                                               primaryjoin="EvolutionDetail.pokemon_key == Pokemon.id",
                                               foreign_keys=pokemon_key)
@@ -198,25 +145,6 @@ class EvolutionDetail(Base, PokeApiResource):
             cls._cache[detail.poke_api_id] = detail
             details.append(detail)
         return details
-    
-
-    """ @classmethod
-    def parse_data(cls, details_data) -> "EvolutionDetail":
-        gender = details_data.gender
-        min_level = details_data.min_level
-        min_happiness = details_data.min_happiness
-        min_beauty = details_data.min_beauty
-        min_affection = details_data.min_affection
-        needs_overworld_rain = details_data.needs_overworld_rain
-        relative_physical_stats = details_data.relative_physical_stats
-        time_of_day = details_data.time_of_day
-        turn_upside_down = details_data.turn_upside_down
-        details = cls(gender=gender, min_level=min_level, min_happiness=min_happiness, min_beauty=min_beauty, min_affection=min_affection,
-                      needs_overworld_rain=needs_overworld_rain, relative_physical_stats=relative_physical_stats, time_of_day=time_of_day,
-                      turn_upside_down=turn_upside_down)
-        
-        # cache?
-        return details """
 
 
     def __init__(self, poke_api_id: int, min_level: int = None, min_happiness: int = None, min_beauty: int = None, min_affection: int = None,
@@ -234,8 +162,6 @@ class EvolutionDetail(Base, PokeApiResource):
         self.turn_upside_down = turn_upside_down
 
     def compare(self, details_data):
-        #if self.gender != details_data.gender:
-        #    self.gender = details_data.gender
         if self.min_level != details_data.minimum_level:
             self.min_level = details_data.minimum_level
         if self.min_happiness != details_data.minimum_happiness:
@@ -281,14 +207,6 @@ class EvolutionTrigger(Base, PokeApiResource):
             cls._cache[trigger.poke_api_id] = trigger
             triggers.append(trigger)
         return triggers
-
-    """ @classmethod
-    def parse_data(cls, data) -> "EvolutionTrigger":
-        poke_api_id = data.id
-        trigger = cls(poke_api_id = poke_api_id, name = data.name)
-        cls._cache[trigger.poke_api_id] = trigger
-
-        return trigger """
     
     def __init__(self, poke_api_id: int, name: str):
         self.poke_api_id = poke_api_id
@@ -296,5 +214,5 @@ class EvolutionTrigger(Base, PokeApiResource):
         self.name = name
 
     def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name
+        if self.name != data.identifier:
+            self.name = data.identifier

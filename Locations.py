@@ -1,6 +1,6 @@
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Float, Computed, UniqueConstraint, Index, Boolean, SmallInteger
+from sqlalchemy import Integer, String, UniqueConstraint, SmallInteger
 import pandas as pd
 
 from Base import Base, TinyInteger, RegionToVersionGroupLink, PokeApiResource, get_next_id, CSVData, ManyToOneAttrs, CSVResource
@@ -47,15 +47,6 @@ class Location(Base, PokeApiResource):
             locations.append(location)
         return locations
     
-    @classmethod
-    def parse_data(cls,data) -> "Location":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        location = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[location.poke_api_id] = location
-        return location
-    
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -77,8 +68,6 @@ class LocationArea(Base, PokeApiResource):
                                                 foreign_keys=location_key)
     encounter_method_rates: Mapped[List["EncounterMethodRate"]] = relationship(back_populates="location_area", cascade="save-update",
                                                                                primaryjoin="LocationArea.id == foreign(EncounterMethodRate.location_area_key)")
-    #pokemon_encounters: Mapped[List["PokemonEncounter"]] = relationship(back_populates="location_area",
-    #                                                                    primaryjoin="LocationArea.id == foreign(PokemonEncounter.location_area_key)")
     encounters: Mapped[List["Encounter"]] = relationship(back_populates="location_area", cascade="save-update",
                                                          primaryjoin="LocationArea.id == foreign(Encounter.location_area_key)")
     names: Mapped[List["LocationAreaName"]] = relationship(back_populates="object_ref", cascade="save-update",
@@ -101,16 +90,6 @@ class LocationArea(Base, PokeApiResource):
             cls._cache[area.poke_api_id] = area
             areas.append(area)
         return areas
-
-    """ @classmethod
-    def parse_data(cls,data) -> "LocationArea":
-        poke_api_id = data.id_
-        name = data.identifier
-        game_index = data.game_index
-
-        area = cls(poke_api_id=poke_api_id, name=name, game_index=game_index)
-        cls._cache[area.poke_api_id] = area
-        return area """
     
     def __init__(self, poke_api_id: int, name: str, game_index: int):
         self.id = get_next_id()
@@ -152,23 +131,6 @@ class EncounterMethodRate(Base, CSVResource):
                                             "encounter_method_id": ManyToOneAttrs("encounter_method", "encounter_method_key"),
                                             "version_id": ManyToOneAttrs("version", "version_key")}})
 
-    """ @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["EncounterMethodRate"]:
-        encounters = []
-        for id_, encounter_data in df.iterrows():
-            #poke_api_id = id_
-            rate = encounter_data.rate
-            encounter = cls(rate = rate)
-            #cls._cache[encounter.poke_api_id] = encounter
-            encounters.append(encounter)
-        return encounters """
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "EncounterMethodRate":
-        rate = data.rate
-        encounter = cls(rate = rate)
-        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return encounter """
     
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
@@ -180,44 +142,6 @@ class EncounterMethodRate(Base, CSVResource):
 
     def get_unique_key(self):
         return str(self.location_area.poke_api_id) + ":" + str(self.encounter_method.poke_api_id) + ":" + str(self.version.poke_api_id)
-
-""" class PokemonEncounter(Base):
-    __tablename__ = "PokemonEncounter"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    max_chance: Mapped[int] = mapped_column(TinyInteger)
-    pokemon_key: Mapped[int] = mapped_column(Integer)
-    version_key: Mapped[int] = mapped_column(Integer)
-    location_area_key: Mapped[int] = mapped_column(Integer)
-
-    pokemon: Mapped["Pokemon"] = relationship(back_populates="pokemon_encounters", cascade="save-update",
-                                            primaryjoin="Pokemon.id == PokemonEncounter.pokemon_key",
-                                            foreign_keys=pokemon_key)
-    version: Mapped["Version"] = relationship(primaryjoin="Version.id == PokemonEncounter.version_key",
-                                            foreign_keys=version_key)
-    encounter_details: Mapped[List["Encounter"]] = relationship(back_populates="pokemon_encounter",
-                                                                primaryjoin="PokemonEncounter.id == foreign(Encounter.pokemon_encounter_key)")
-    location_area: Mapped["LocationArea"] = relationship(back_populates="pokemon_encounters",
-                                                         primaryjoin="PokemonEncounter.location_area_key == LocationArea.id",
-                                                         foreign_keys=location_area_key)
-    
-    __table_args__ = (
-        UniqueConstraint("pokemon_key","version_key","location_area_key",name="ux_PokemonEncounter_pokemon_version_area"),
-    )
-
-    @classmethod
-    def parse_data(cls,data) -> "PokemonEncounter":
-        max_chance = data.max_chance
-        encounter = cls(max_chance = max_chance)
-        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return encounter
-    
-    def __init__(self, max_chance: int):
-        self.id = get_next_id()
-        self.max_chance = max_chance
-
-    def compare(self, data):
-        if self.max_chance != data.max_chance:
-            self.max_chance = data.max_chance """
 
 
 class PalParkArea(Base, PokeApiResource):
@@ -246,15 +170,6 @@ class PalParkArea(Base, PokeApiResource):
             areas.append(area)
         return areas
     
-    @classmethod
-    def parse_data(cls,data) -> "PalParkArea":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        area = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[area.poke_api_id] = area
-        return area
-    
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
@@ -268,7 +183,6 @@ class PalParkEncounter(Base, CSVResource):
     __tablename__ = "PalParkEncounter"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     base_score: Mapped[int] = mapped_column(TinyInteger)
-    #rarity: Mapped[int] = mapped_column(TinyInteger)
     rate: Mapped[int] = mapped_column(TinyInteger)
     pal_park_area_key: Mapped[int] = mapped_column(Integer)
     pokemon_species_key: Mapped[int] = mapped_column(Integer)
@@ -308,7 +222,6 @@ class PalParkEncounter(Base, CSVResource):
 class Region(Base, PokeApiResource):
     __tablename__ = "Region"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    #generation_key: Mapped[Optional[int]] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(String(100))
 
     main_generation: Mapped["Generation"] = relationship(back_populates="main_region", cascade="save-update",
@@ -324,8 +237,6 @@ class Region(Base, PokeApiResource):
                                                            primaryjoin="Region.id == foreign(RegionName.object_key)")
 
     _cache: Dict[int, "Region"] = {}
-    #_csv = "regions.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "regions.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_Region_PokeApiId"),
@@ -341,29 +252,13 @@ class Region(Base, PokeApiResource):
             cls._cache[region.poke_api_id] = region
             regions.append(region)
         return regions
-
-
-    """ @classmethod
-    def parse_data(cls,data) -> "Region":
-        poke_api_id = data.id_
-        name = data.name
-
-        region = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[region.poke_api_id] = region
-        return region """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
         self.poke_api_id = poke_api_id
         self.name = name
 
-    """ def compare(self, data):
-        if self.name != data.name:
-            self.name = data.name """
 
-    def compare(self, data: pd.Series) -> bool:
-        updated = False
+    def compare(self, data: pd.Series):
         if self.name != data.identifier:
             self.name = data.identifier
-            updated = True
-        return updated

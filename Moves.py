@@ -1,13 +1,12 @@
 import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, SmallInteger, String, Float, Computed, UniqueConstraint, Index, Boolean
-from sqlalchemy import Table, Column, ForeignKey
+from sqlalchemy import Integer, SmallInteger, String, UniqueConstraint
 
 from Base import Base, TinyInteger, MoveLearnMethodToVersionGroupLink, get_next_id, PokeApiResource, ContestComboLink, SuperContestComboLink, ManyToOneAttrs, CSVData, CSVResource, MergeCSV, GroupByCSV, ManyToManyAttr, MoveToMoveFlagLink
 
 if TYPE_CHECKING:
-    from Contests import ContestType, ContestEffect, SuperContestEffect#, ContestChain, SuperContestChain
+    from Contests import ContestType, ContestEffect, SuperContestEffect
     from Evolution import EvolutionDetail
     from Games import Generation, VersionGroup
     from Pokemon import Pokemon, PokemonType, PokemonStat, PokemonMove, MoveBattleStylePreference
@@ -52,10 +51,6 @@ class Move(Base, PokeApiResource):
     target_key: Mapped[int] = mapped_column(Integer)
     effect_key: Mapped[Optional[int]] = mapped_column(Integer)
 
-    """ contest_combos: Mapped[List["ContestChain"]] = relationship(back_populates="move",cascade="save-update",
-                                                                primaryjoin="Move.id == foreign(ContestChain.move_key)")
-    super_contest_combos: Mapped[List["SuperContestChain"]] = relationship(back_populates="move",cascade="save-update",
-                                                                primaryjoin="Move.id == foreign(SuperContestChain.move_key)") """
     
     lead_in_contest_combo_moves: Mapped[List["Move"]] = relationship(back_populates="follow_up_contest_combo_moves", secondary=ContestComboLink,  cascade="save-update",
                                                                      primaryjoin="Move.id == ContestComboLink.c.follow_up_move_key",
@@ -117,24 +112,17 @@ class Move(Base, PokeApiResource):
     known_move_evolution_details: Mapped[List["EvolutionDetail"]] = relationship(back_populates="known_move",cascade="save-update",
                                                                                  primaryjoin="Move.id == foreign(EvolutionDetail.known_move_key)")
 
-    """ effect_entries: Mapped[List["MoveEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
-                                                              primaryjoin="Move.id == foreign(MoveEffect.object_key)") """
     move_effect: Mapped["MoveEffect"] = relationship(back_populates="moves", cascade="save-update",
                                                      primaryjoin="Move.effect_key == MoveEffect.id",
                                                      foreign_keys=effect_key)
     
     move_flags: Mapped[List["MoveFlag"]] = relationship(back_populates="moves", secondary=MoveToMoveFlagLink,  cascade="save-update")
-    """ effect_changes: Mapped[List["MoveEffectChange"]] = relationship(back_populates="object_ref", cascade="save-update",
-                                                              primaryjoin="Move.id == foreign(MoveEffectChange.object_key)") """
-    """ effect_changes: Mapped[List["MoveEffectChange"]] = relationship(back_populates="move", cascade="save-update",
-                                                              primaryjoin="Move.id == foreign(MoveEffectChange.move_ley)") """
     flavor_text_entries: Mapped[List["MoveFlavorText"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveFlavorText.object_key)")
     names: Mapped[List["MoveName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="Move.id == foreign(MoveName.object_key)")
     
     _cache: Dict[int, "Move"] = {}
-    #_csv = "moves.csv"
     csv_data: CSVData = CSVData(**{"primary_csv": "moves.csv", 
                          "merge_csvs": (MergeCSV("move_meta.csv", "move_id"),
                                         MergeCSV("move_flag_map.csv", "move_id"),
@@ -189,44 +177,6 @@ class Move(Base, PokeApiResource):
             moves.append(move)
         return moves
     
-    @classmethod
-    def parse_data(cls,data) -> "Move":
-        poke_api_id = data.id_
-        name = data.identifier
-        accuracy = data.accuracy
-        effect_chance = data.effect_chance
-        pp = data.pp
-        priority = data.priority
-        power = data.power
-        
-        #meta
-        """ min_hits = data.meta.min_hits
-        max_hits = data.meta.max_hits
-        min_turns = data.meta.min_turns
-        max_turns = data.meta.max_turns
-        drain = data.meta.drain
-        healing = data.meta.healing
-        crit_rate = data.meta.crit_rate
-        ailment_chance = data.meta.ailment_chance
-        flinch_chance = data.meta.flinch_chance
-        stat_chance = data.meta.stat_chance """
-
-        min_hits = data.min_hits
-        max_hits = data.max_hits
-        min_turns = data.min_turns
-        max_turns = data.max_turns
-        drain = data.drain
-        healing = data.healing
-        crit_rate = data.crit_rate
-        ailment_chance = data.ailment_chance
-        flinch_chance = data.flinch_chance
-        stat_chance = data.stat_chance
-
-        move = cls(poke_api_id=poke_api_id, name=name, accuracy=accuracy, effect_chance=effect_chance, pp=pp, priority=priority, power=power, min_hits=min_hits, max_hits=max_hits,
-                   min_turns=min_turns, max_turns=max_turns, drain=drain, healing=healing, crit_rate=crit_rate, ailment_chance=ailment_chance, flinch_chance=flinch_chance, stat_chance=stat_chance)
-        cls._cache[move.poke_api_id] = move
-        return move
-    
     def __init__(self, poke_api_id: int, name: str, accuracy: int, effect_chance: int, pp: int, priority: int, power: int, min_hits: int, max_hits: int,
                    min_turns: int, max_turns: int, drain: int, healing: int, crit_rate: int, ailment_chance: int, flinch_chance: int, stat_chance: int):
         self.id = get_next_id()
@@ -265,27 +215,6 @@ class Move(Base, PokeApiResource):
             self.power = data.power
         
         #meta
-        """ if self.min_hits != data.meta.min_hits:
-            self.min_hits = data.meta.min_hits
-        if self.max_hits != data.meta.max_hits:
-            self.max_hits = data.meta.max_hits
-        if self.min_turns != data.meta.min_turns:
-            self.min_turns = data.meta.min_turns
-        if self.max_turns != data.meta.max_turns:
-            self.max_turns = data.meta.max_turns
-        if self.drain != data.meta.drain:
-            self.drain = data.meta.drain
-        if self.healing != data.meta.healing:
-            self.healing = data.meta.healing
-        if self.crit_rate != data.meta.crit_rate:
-            self.crit_rate = data.meta.crit_rate
-        if self.ailment_chance != data.meta.ailment_chance:
-            self.ailment_chance = data.meta.ailment_chance
-        if self.flinch_chance != data.meta.flinch_chance:
-            self.flinch_chance = data.meta.flinch_chance
-        if self.stat_chance != data.meta.stat_chance:
-            self.stat_chance = data.meta.stat_chance """
-
         if self.min_hits != data.min_hits:
             self.min_hits = data.min_hits
         if self.max_hits != data.max_hits:
@@ -324,8 +253,6 @@ class MoveEffect(Base, PokeApiResource):
                                                               primaryjoin="MoveEffect.id == foreign(MoveEffectEffect.object_key)") 
 
     _cache: Dict[int, "MoveEffect"] = {}
-    #_csv = "move_effects.csv"
-    #relationship_attr_map = {}  
     csv_data: CSVData = CSVData(**{"primary_csv": "move_effects.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_MoveEffect_PokeApiId"),
@@ -336,18 +263,10 @@ class MoveEffect(Base, PokeApiResource):
         effects = []
         for id_, effect_data in df.iterrows():
             poke_api_id = id_
-            #name = effect_data.identifier
             effect = cls(poke_api_id=poke_api_id)
             cls._cache[effect.poke_api_id] = effect
             effects.append(effect)
         return effects
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "MoveEffect":
-        poke_api_id = data.id_
-        effect = cls(poke_api_id=poke_api_id)
-        cls._cache[effect.poke_api_id] = effect
-        return effect """
     
     def __init__(self, poke_api_id: int):
         self.id = get_next_id()
@@ -360,15 +279,11 @@ class MoveEffectChange(Base, PokeApiResource):
     __tablename__ = "MoveEffectChange"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     effect_key: Mapped[int] = mapped_column(Integer)
-    #move_key: Mapped[int] = mapped_column(Integer)
     changed_in_version_group_key: Mapped[int] = mapped_column(Integer)
 
     effect: Mapped["MoveEffect"] = relationship(back_populates="past_effects", cascade="save-update",
                                                 primaryjoin="MoveEffectChange.effect_key == MoveEffect.id",
                                                 foreign_keys=effect_key)
-    """ move: Mapped["Move"] = relationship(back_populates="effect_changes", cascade="save-update",
-                                                primaryjoin="MoveEffectChange.move_key == Move.id",
-                                                foreign_keys=move_key) """
     changed_in_version_group: Mapped["VersionGroup"] = relationship(cascade="save-update",
                                                                     primaryjoin="MoveEffectChange.changed_in_version_group_key == VersionGroup.id",
                                                                     foreign_keys=changed_in_version_group_key)
@@ -377,10 +292,6 @@ class MoveEffectChange(Base, PokeApiResource):
                                                               primaryjoin="MoveEffectChange.id == foreign(MoveEffectChangeText.object_key)") 
     
     _cache: Dict[int, "MoveEffectChange"] = {}
-    """ _csv = "move_effect_changelog.csv"
-    relationship_attr_map = {"changed_in_version_group_id": ManyToOneAttrs("changed_in_version_group","changed_in_version_group_key"),
-                             "effect_id": ManyToOneAttrs("effect", "effect_key")} """
-                             #"move_id": ManyToOneAttrs("move", "move_key")} 
     csv_data: CSVData = CSVData(**{"primary_csv": "move_effect_changelog.csv",
                           "relationships": {"changed_in_version_group_id": ManyToOneAttrs("changed_in_version_group","changed_in_version_group_key"),
                                             "effect_id": ManyToOneAttrs("effect", "effect_key")}})
@@ -393,18 +304,10 @@ class MoveEffectChange(Base, PokeApiResource):
         changes = []
         for id_, change_data in df.iterrows():
             poke_api_id = id_
-            #name = change_data.identifier
             change = cls(poke_api_id=poke_api_id)
             cls._cache[change.poke_api_id] = change
             changes.append(change)
         return changes
-    
-    @classmethod
-    def parse_data(cls,data) -> "MoveEffectChange":
-        poke_api_id = data.id_
-        effect = cls(poke_api_id=poke_api_id)
-        cls._cache[effect.poke_api_id] = effect
-        return effect
     
     def __init__(self, poke_api_id: int):
         self.id = get_next_id()
@@ -426,9 +329,6 @@ class MoveStatChange(Base, CSVResource):
     move: Mapped["Move"] = relationship(back_populates="stat_changes", cascade="save-update",
                                         primaryjoin="MoveStatChange.move_key == Move.id",
                                         foreign_keys=move_key)
-    """ _csv = "move_meta_stat_changes.csv"
-    relationship_attr_map = {"move_id": ManyToOneAttrs("move","move_key"),
-                             "stat_id": ManyToOneAttrs("stat","stat_key")}   """
     csv_data: CSVData = CSVData(**{"primary_csv": "move_meta_stat_changes.csv", 
                          "relationships": {
                              "move_id": ManyToOneAttrs("move","move_key"),
@@ -436,36 +336,14 @@ class MoveStatChange(Base, CSVResource):
     __table_args__ = (
         UniqueConstraint("move_key","stat_key",name="ux_MoveStatChange_Move_Stat"),
     )
-
-    """ @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["MoveStatChange"]:
-        stat_changes = []
-        for id_, stat_change_data in df.iterrows():
-            change = stat_change_data.change
-            stat_change = cls(change=change)
-            #cls._cache[value.poke_api_id] = value
-            stat_changes.append(stat_change)
-        return stat_changes """
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "MoveStatChange":
-        #poke_api_id = data.id_
-        change = data.change
-
-        stat_change = cls(change=change)
-        #cls._cache[ailment.poke_api_id] = ailment
-        return stat_change """
     
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
         self.change = data.change
 
     def compare(self, data):
-        #updated = False
         if self.change != data.change:
             self.change = data.change
-            #updated = True
-        #return updated
 
     def get_unique_key(self):
         return str(self.move.poke_api_id) + ":" + str(self.stat.poke_api_id)
@@ -490,12 +368,6 @@ class PastMoveStatValues(Base, CSVResource):
                                                     foreign_keys=move_type_key)
     version_group: Mapped["VersionGroup"] = relationship(primaryjoin="PastMoveStatValues.version_group_key == VersionGroup.id", cascade="save-update",
                                                          foreign_keys=version_group_key)
-    """ effect_entries: Mapped[List["PastMoveEffect"]] = relationship(back_populates="object_ref", cascade="save-update",
-                                                                  primaryjoin="PastMoveStatValues.id == foreign(PastMoveEffect.object_key)") """
-    
-    """ _csv = "move_changelog.csv"
-    relationship_attr_map = {"changed_in_version_group_id": ManyToOneAttrs("version_group","version_group_key"),
-                             "move_id": ManyToOneAttrs("move", "move_key")}  """
     csv_data: CSVData = CSVData(**{"primary_csv": "move_changelog.csv", 
                          "relationships": {
                              "changed_in_version_group_id": ManyToOneAttrs("version_group","version_group_key"),
@@ -504,33 +376,7 @@ class PastMoveStatValues(Base, CSVResource):
     __table_args__ = (
         UniqueConstraint("move_key","version_group_key",name="ux_PastMoveStatValues_Move_VG"),
     )
-
-    """ @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["PastMoveStatValues"]:
-        values = []
-        for id_, value_data in df.iterrows():
-            accuracy = value_data.accuracy
-            effect_chance = value_data.effect_chance
-            power = value_data.power
-            pp = value_data.pp
-            value = cls(accuracy=accuracy, effect_chance=effect_chance, power=power, pp=pp)
-            #cls._cache[value.poke_api_id] = value
-            values.append(value)
-        return values """
     
-    """ @classmethod
-    def parse_data(cls,data) -> "PastMoveStatValues":
-        #poke_api_id = data.id_
-        accuracy = data.accuracy
-        effect_chance = data.effect_chance
-        power = data.power
-        pp = data.pp
-
-        past_value = cls(accuracy=accuracy, effect_chance=effect_chance, power=power, pp=pp)
-        #cls._cache[ailment.poke_api_id] = ailment
-        return past_value """
-    
-    #def __init__(self, accuracy: int, effect_chance: int, power: int, pp: int):
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
         self.accuracy = data.accuracy
@@ -540,23 +386,16 @@ class PastMoveStatValues(Base, CSVResource):
         self.priority = data.priority
 
     def compare(self, data: pd.Series):
-        #updated = False
         if self.accuracy != data.accuracy:
             self.accuracy = data.accuracy
-            #updated = True
         if self.effect_chance != data.effect_chance:
             self.effect_chance = data.effect_chance
-            #updated = True
         if self.power != data.power:
             self.power = data.power
-            #updated = True
         if self.pp != data.pp:
             self.pp = data.pp
-            #updated = True
         if self.priority != data.priority:
             self.priority = data.priority
-            #updated = True
-        #return updated
 
     def get_unique_key(self):
         return str(self.version_group.poke_api_id) + ":" + str(self.move.poke_api_id)
@@ -572,8 +411,6 @@ class MoveAilment(Base, PokeApiResource):
                                                                   primaryjoin="MoveAilment.id == foreign(MoveAilmentName.object_key)")
     
     _cache: Dict[int, "MoveAilment"] = {}
-    #_csv = "move_meta_ailments.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "move_meta_ailments.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_MoveAilment_PokeApiId"),
@@ -589,15 +426,6 @@ class MoveAilment(Base, PokeApiResource):
             cls._cache[ailment.poke_api_id] = ailment
             ailments.append(ailment)
         return ailments
-    
-    @classmethod
-    def parse_data(cls,data) -> "MoveAilment":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        ailment = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[ailment.poke_api_id] = ailment
-        return ailment
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -620,8 +448,6 @@ class MoveBattleStyle(Base, PokeApiResource):
                                                                   primaryjoin="MoveBattleStyle.id == foreign(MoveBattleStyleName.object_key)")
     
     _cache: Dict[int, "MoveBattleStyle"] = {}
-    #_csv = "move_battle_styles.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "move_battle_styles.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_MoveBattleStyle_PokeApiId"),
@@ -637,15 +463,6 @@ class MoveBattleStyle(Base, PokeApiResource):
             cls._cache[style.poke_api_id] = style
             styles.append(style)
         return styles
-    
-    @classmethod
-    def parse_data(cls,data) -> "MoveBattleStyle":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        mbs = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[mbs.poke_api_id] = mbs
-        return mbs
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -667,8 +484,6 @@ class MoveCategory(Base, PokeApiResource):
                                                                   primaryjoin="MoveCategory.id == foreign(MoveCategoryDescription.object_key)")
     
     _cache: Dict[int, "MoveCategory"] = {}
-    #_csv = "move_meta_categories.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "move_meta_categories.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_MoveCategory_PokeApiId"),
@@ -684,15 +499,6 @@ class MoveCategory(Base, PokeApiResource):
             cls._cache[category.poke_api_id] = category
             categories.append(category)
         return categories
-    
-    @classmethod
-    def parse_data(cls,data) -> "MoveCategory":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        cat = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[cat.poke_api_id] = cat
-        return cat
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -719,8 +525,6 @@ class DamageClass(Base, PokeApiResource):
                                                                   primaryjoin="DamageClass.id == foreign(DamageClassName.object_key)")
     
     _cache: Dict[int, "DamageClass"] = {}
-    #_csv = "move_damage_classes.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "move_damage_classes.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_DamageClass_PokeApiId"),
@@ -736,15 +540,6 @@ class DamageClass(Base, PokeApiResource):
             cls._cache[dc.poke_api_id] = dc
             dcs.append(dc)
         return dcs
-    
-    @classmethod
-    def parse_data(cls,data) -> "DamageClass":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        dc = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[dc.poke_api_id] = dc
-        return dc
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -771,8 +566,6 @@ class MoveLearnMethod(Base, PokeApiResource):
                                             primaryjoin="MoveLearnMethod.id == foreign(PokemonMove.move_learn_method_key)")
     
     _cache: Dict[int, "MoveLearnMethod"] = {}
-    #_csv = "pokemon_move_methods.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_move_methods.csv", 
                                    "merge_csvs": (MergeCSV("version_group_pokemon_move_methods.csv", "pokemon_move_method_id"),),
                                    "group_by": GroupByCSV(['version_group_id'], ['id','identifier']),
@@ -791,15 +584,6 @@ class MoveLearnMethod(Base, PokeApiResource):
             cls._cache[method.poke_api_id] = method
             methods.append(method)
         return methods
-    
-    @classmethod
-    def parse_data(cls,data) -> "MoveLearnMethod":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        method = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[method.poke_api_id] = method
-        return method
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -824,8 +608,6 @@ class MoveTarget(Base, PokeApiResource):
                                                                   primaryjoin="MoveTarget.id == foreign(MoveTargetName.object_key)")
     
     _cache: Dict[int, "MoveTarget"] = {}
-    #_csv = "move_targets.csv"
-    #relationship_attr_map = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "move_targets.csv", "relationships": {}})
     __table_args__ = (
         UniqueConstraint("poke_api_id",name="ux_MoveTarget_PokeApiId"),
@@ -841,15 +623,6 @@ class MoveTarget(Base, PokeApiResource):
             cls._cache[target.poke_api_id] = target
             targets.append(target)
         return targets
-    
-    @classmethod
-    def parse_data(cls,data) -> "MoveTarget":
-        poke_api_id = data.id_
-        name = data.identifier
-
-        target = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[target.poke_api_id] = target
-        return target
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -917,38 +690,16 @@ class Machine(Base, CSVResource):
                                                          primaryjoin="Machine.version_group_key == VersionGroup.id",
                                                          foreign_keys=version_group_key)
     
-    #_cache: Dict[int, "Machine"] = {}
     csv_data: CSVData = CSVData(**{"primary_csv": "machines.csv", 
                                    "relationships": {"version_group_id": ManyToOneAttrs("version_group","version_group_key"),
                                                      "item_id": ManyToOneAttrs("item","item_key"),
                                                      "move_id": ManyToOneAttrs("move","move_key")}})
     __table_args__ = (
-        #UniqueConstraint("poke_api_id",name="ux_Machine_PokeApiId"),
         UniqueConstraint("move_key","item_key","version_group_key",name="ux_Machine_move_item_version"),
     )
 
-    """ @classmethod
-    def parse_csv(cls, df: pd.DataFrame) -> List["Machine"]:
-        machines = []
-        for id_, machine_data in df.iterrows():
-            poke_api_id = id_
-            machine = cls(poke_api_id=poke_api_id)
-            cls._cache[machine.poke_api_id] = machine
-            machines.append(machine)
-        return machines """
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "Machine":
-        poke_api_id = data.id_
-
-        machine = cls(poke_api_id=poke_api_id)
-        cls._cache[machine.poke_api_id] = machine
-        return machine """
-    
-    #def __init__(self, poke_api_id: int):
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
-        #self.poke_api_id = poke_api_id
         self.machine_number = data.machine_number
 
     def compare(self, data: pd.Series):

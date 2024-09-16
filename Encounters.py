@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import List, Optional, TYPE_CHECKING, Dict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, SmallInteger, String, Table, Column, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import Integer, String, Boolean, UniqueConstraint
 
 from Base import Base, TinyInteger, EncounterToEncounterCondValLink, get_next_id, PokeApiResource, CSVData, CSVResource, ManyToOneAttrs, ManyToManyAttr, MergeCSV, GroupByCSV
 
@@ -11,69 +11,16 @@ if TYPE_CHECKING:
     from Pokemon import Pokemon
     from TextEntries import EncounterMethodName, EncounterConditionName, EncounterConditionValueName
 
-""" class Encounter(Base):
-    __tablename__ = "Encounter"
-    id: Mapped[int] = mapped_column(Integer,primary_key=True)
-    min_level: Mapped[int] = mapped_column(TinyInteger)
-    max_level: Mapped[int] = mapped_column(TinyInteger)
-    chance: Mapped[int] = mapped_column(TinyInteger)
-    method_key: Mapped[int] = mapped_column(Integer)
-    pokemon_encounter_key: Mapped[int] = mapped_column(Integer)
-
-    method: Mapped["EncounterMethod"] = relationship(back_populates="encounters", cascade="save-update",
-                                                     primaryjoin="Encounter.method_key == EncounterMethod.id",
-                                                     foreign_keys=method_key)
-    pokemon_encounter: Mapped["PokemonEncounter"] = relationship(back_populates="encounter_details", cascade="save-update",
-                                                                 primaryjoin="Encounter.pokemon_encounter_key == PokemonEncounter.id",
-                                                                 foreign_keys=pokemon_encounter_key)
-    condition_values: Mapped[List["EncounterConditionValue"]] = relationship(back_populates="encounters", secondary=EncounterToEncounterCondValLink,  cascade="save-update")
-
-    __table_args__ = (
-        UniqueConstraint("pokemon_encounter_key","method_key",name="ux_Encounter_pokemon_encounter_method"),
-    )
-
-    @classmethod
-    def parse_data(cls,data) -> "Encounter":
-        min_level = data.min_level
-        max_level = data.max_level
-        chance = data.chance
-        encounter = cls(min_level = min_level, max_level = max_level, chance = chance)
-        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return encounter
-    
-    def __init__(self, min_level: int, max_level: int, chance: int):
-        self.id = get_next_id()
-        self.min_level = min_level
-        self.max_level = max_level
-        self.chance = chance
-
-    def compare(self, data):
-        if self.min_level != data.min_level:
-            self.min_level = data.min_level
-        if self.max_level != data.max_level:
-            self.max_level = data.max_level
-        if self.chance != data.chance:
-            self.chance = data.chance """
-
 class Encounter(Base, PokeApiResource):
     __tablename__ = "Encounter"
     id: Mapped[int] = mapped_column(Integer,primary_key=True)
     min_level: Mapped[int] = mapped_column(TinyInteger)
     max_level: Mapped[int] = mapped_column(TinyInteger)
-    #chance: Mapped[int] = mapped_column(TinyInteger)
-    #method_key: Mapped[int] = mapped_column(Integer)
-    #pokemon_encounter_key: Mapped[int] = mapped_column(Integer)
     version_key: Mapped[int] = mapped_column(Integer)
     location_area_key: Mapped[int] = mapped_column(Integer)
     encounter_slot_key: Mapped[int] = mapped_column(Integer)
     pokemon_key: Mapped[int] = mapped_column(Integer)
 
-    #method: Mapped["EncounterMethod"] = relationship(back_populates="encounters", cascade="save-update",
-    #                                                 primaryjoin="Encounter.method_key == EncounterMethod.id",
-    #                                                 foreign_keys=method_key)
-    #pokemon_encounter: Mapped["PokemonEncounter"] = relationship(back_populates="encounter_details", cascade="save-update",
-    #                                                             primaryjoin="Encounter.pokemon_encounter_key == PokemonEncounter.id",
-    #                                                             foreign_keys=pokemon_encounter_key)
     version: Mapped["Version"] = relationship(cascade="save-update",
                                               primaryjoin="Encounter.version_key == Version.id",
                                               foreign_keys=version_key)
@@ -113,15 +60,6 @@ class Encounter(Base, PokeApiResource):
             cls._cache[encounter.poke_api_id] = encounter
             encounters.append(encounter)
         return encounters
-
-    """ @classmethod
-    def parse_data(cls,data) -> "Encounter":
-        min_level = data.min_level
-        max_level = data.max_level
-        chance = data.chance
-        encounter = cls(min_level = min_level, max_level = max_level, chance = chance)
-        #cls._cache[evolution_chain.poke_api_id] = evolution_chain
-        return encounter """
     
     def __init__(self, poke_api_id: int, min_level: int, max_level: int):
         self.id = get_next_id()
@@ -188,10 +126,6 @@ class EncounterMethod(Base, PokeApiResource):
     name: Mapped[str] = mapped_column(String(100))
     order: Mapped[int] = mapped_column(TinyInteger)
 
-    # if back reference is needed, this should be EcnounterSlot
-    #encounters: Mapped[List["Encounter"]] = relationship(back_populates="method", cascade="save-update",
-    #                                                    primaryjoin="EncounterMethod.id == foreign(Encounter.method_key)")
-
     names: Mapped[List["EncounterMethodName"]] = relationship(back_populates="object_ref", cascade="save-update",
                                                               primaryjoin="EncounterMethod.id == foreign(EncounterMethodName.object_key)")
     
@@ -213,16 +147,6 @@ class EncounterMethod(Base, PokeApiResource):
             cls._cache[method.poke_api_id] = method
             methods.append(method)
         return methods
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "EncounterMethod":
-        poke_api_id = data.id_
-        name = data.name
-        order = data.order
-
-        method = cls(poke_api_id=poke_api_id, name=name, order=order)
-        cls._cache[method.poke_api_id] = method
-        return method """
     
     def __init__(self, poke_api_id: int, name: str, order: int):
         self.id = get_next_id()
@@ -263,15 +187,6 @@ class EncounterCondition(Base, PokeApiResource):
             cls._cache[condition.poke_api_id] = condition
             conditions.append(condition)
         return conditions
-    
-    """ @classmethod
-    def parse_data(cls,data) -> "EncounterCondition":
-        poke_api_id = data.id_
-        name = data.name
-
-        condition = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[condition.poke_api_id] = condition
-        return condition """
     
     def __init__(self, poke_api_id: int, name: str):
         self.id = get_next_id()
@@ -316,15 +231,6 @@ class EncounterConditionValue(Base, PokeApiResource):
             cls._cache[value.poke_api_id] = value
             values.append(value)
         return values
-
-    """ @classmethod
-    def parse_data(cls,data) -> "EncounterConditionValue":
-        poke_api_id = data.id_
-        name = data.name
-
-        value = cls(poke_api_id=poke_api_id, name=name)
-        cls._cache[value.poke_api_id] = value
-        return value """
     
     def __init__(self, poke_api_id: int, name: str, is_default: bool):
         self.id = get_next_id()

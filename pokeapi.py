@@ -210,12 +210,14 @@ def process_nonapi_csv(T: Type[CSVResource]):
         session.commit()
 
     with Session() as session:
+        new_objects = []
         for idx,entry_data in df.loc[new_idxs].iterrows():
             new_object: CSVResource = T(entry_data)
             logger.debug("Process %s: Parsing ManyToOnes for new object: %s", type_name, new_object)
             process_relationships(new_object, entry_data, session)
-            new_object = session.merge(new_object)
-
+            #new_object = session.merge(new_object)
+            new_objects.append(new_object)
+        session.add_all(new_objects)
         session.flush()
         """for updated_entry in updated_entries:
             updated_entry = session.merge(updated_entry)
@@ -297,7 +299,8 @@ def process_csv(T: Type[PokeApiResource]):
     with Session() as session:
         for new_object in new_objects:
             process_relationships(new_object, df.loc[new_object.poke_api_id], session)
-            new_object = session.merge(new_object)
+            #new_object = session.merge(new_object)
+        session.add_all(new_objects)
         session.commit()
 
 def process_relationships(object: CSVResource, data, session):

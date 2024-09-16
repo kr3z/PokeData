@@ -51,11 +51,6 @@ class FilterOperation(Enum):
     LESSTHAN = 2
     EQUAL = 3
 
-""" @dataclass(frozen=True)
-class RenameColumn:
-    from_column: str
-    to_column: str """
-
 @dataclass(frozen=True)
 class FilterCSV:
     column_name: str
@@ -78,7 +73,6 @@ class GroupByCSV:
 class CSVData():
     primary_csv: str
     relationships: Dict[str,Tuple[str,str]]
-    #secondary_csvs: Optional[Dict[str,str]] # Dict[csv_name, join_key]
     merge_csvs: Optional[Tuple[MergeCSV, ...]] = ()
     concat_csvs: Optional[Tuple[str, ...]] = ()
     append_unique_attrs: Optional[Tuple[str,...]] = ()
@@ -116,11 +110,8 @@ def get_ids(nIds: int) -> List[int]:
     return ret_ids
     
 def fill_pool() -> None:
-    #conn = cls.getConnection()
-    #res = conn.executeQuery("SELECT NEXTVAL(id_seq),increment from id_seq")
     with Session() as session:
         res = session.execute(text("SELECT NEXTVAL(id_seq),increment from id_seq")).first()
-        #res = cls.singleQuery("SELECT NEXTVAL(id_seq),increment from id_seq")
         next_val = res[0]
         increment = res[1]
         logger.debug("Adding values %d to %d to id pool"  % (next_val,next_val+increment))
@@ -145,17 +136,6 @@ class PokeApiResource(CSVResource):
     
     def recache(self):
         self.__class__._cache[self.poke_api_id] = self
-
-""" class RegionToVersionGroupLink(Base, CSVResource):
-    __tablename__ = "RegionToVersionGroupLink"
-    region_key: Mapped[int] =  mapped_column(ForeignKey("Region.id"), primary_key=True)
-    version_group_key: Mapped[int] = mapped_column(ForeignKey("VersionGroup.id"), primary_key=True)
-
-    csv_data: CSVData = CSVData(**{"primary_csv": "version_group_regions.csv", 
-                                   "relationships": {"region_id":"region_key",
-                                                     "version_group_id": "version_group_key"}})
-    
- """
 
 RegionToVersionGroupLink = Table(
     "RegionToVersionGroupLink",
