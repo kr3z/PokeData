@@ -269,7 +269,7 @@ class GrowthRateExperienceLevel(Base):
             self.experience = data.experience
 
     def get_unique_key(self):
-        return str(self.growth_rate.poke_api_id) + ":" + str(self.level)
+        return str(self.level) + ":" + str(self.growth_rate.poke_api_id)
 
 class PokemonNature(Base, PokeApiResource):
     __tablename__ = "PokemonNature"
@@ -666,7 +666,8 @@ class PokemonAbilityLink(Base, CSVResource):
                              "pokemon_id": ManyToOneAttrs("pokemon","pokemon_key"),
                              "ability_id": ManyToOneAttrs("ability","ability_key"),
                              "generation_id": ManyToOneAttrs("generation", "generation_key")
-                         }})
+                         },
+                         "append_unique_attrs":("slot",)})
     
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
@@ -684,7 +685,7 @@ class PokemonAbilityLink(Base, CSVResource):
         # Some (only sv) pokemon have the same ability in slots 1 and 3
         # so the combination of pokemon/ability is not unique
         # Need to also add in slot
-        return str(self.slot) + ":" + str(self.pokemon.poke_api_id) + ":" + str(self.ability.poke_api_id) + ":" + str(gen_id)
+        return  str(self.slot)+ ":" + str(self.pokemon.poke_api_id) + ":" + str(self.ability.poke_api_id) + ":" + str(gen_id)
 
 
 class AbstractTypeLink(Base, CSVResource):
@@ -851,7 +852,8 @@ class PokemonMove(Base, CSVResource):
                                    "relationships": {"pokemon_id": ManyToOneAttrs("pokemon", "pokemon_key"),
                                                      "version_group_id": ManyToOneAttrs("version_group", "version_group_key"),
                                                      "move_id": ManyToOneAttrs("move", "move_key"),
-                                                     "pokemon_move_method_id": ManyToOneAttrs("move_learn_method", "move_learn_method_key")}})
+                                                     "pokemon_move_method_id": ManyToOneAttrs("move_learn_method", "move_learn_method_key")},
+                                    "append_unique_attrs":("level",)})
     
     def __init__(self, data: pd.Series):
         self.id = get_next_id()
@@ -865,7 +867,7 @@ class PokemonMove(Base, CSVResource):
             self.order = data.order
 
     def get_unique_key(self):
-        return str(self.level_learned_at) + ":" + str(self.pokemon.poke_api_id) + ":" + str(self.version_group.poke_api_id) + ":" + str(self.move.poke_api_id) + ":" + str(self.move_learn_method.poke_api_id)
+        return  str(self.level_learned_at)+ ":" + str(self.pokemon.poke_api_id) + ":" + str(self.version_group.poke_api_id) + ":" + str(self.move.poke_api_id) + ":" + str(self.move_learn_method.poke_api_id)
 
 class PokemonColor(Base, PokeApiResource):
     __tablename__ = "PokemonColor"

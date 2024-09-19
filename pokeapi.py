@@ -170,8 +170,25 @@ def process_nonapi_csv(T: Type[CSVResource]):
     if len(existing_entry_map) > 0:
         logger.debug("Process %s: Found %s existing entries for %s", type_name, len(existing_entry_map), type_name)
     
-    idx_to_keys: Dict[int, str] = {}
-    for idx,row_data in df.iterrows():
+    #idx_to_keys: Dict[int, str] = {}
+    new_idxs = []
+    update_entries_map: Dict[CSVResource, pd.Series] = {}
+    unique_key_attrs = [attr_name for attr_name in T.csv_data.append_unique_attrs]
+    unique_key_attrs.extend([attr_name for attr_name in T.csv_data.relationships.keys()])
+
+    unique_key_data = df[unique_key_attrs].values.tolist()
+    for idx in range(len(unique_key_data)):
+        unique_key = ":".join([str(int(attr)) if isinstance(attr,float) else str(attr) for attr in unique_key_data[idx]])
+        existing_entry = existing_entry_map.pop(unique_key, None)
+        if existing_entry:
+            update_entries_map[existing_entry] = df.loc[idx]
+        else:
+            logger.debug("Process %s: Parsing new entry: %s", type_name, unique_key)
+            new_idxs.append(idx)
+            #logger.error("Found new idx: %s unique_key: %s", idx, unique_key)
+            raise
+
+    """ for idx,row_data in df.iterrows():
         unique_key = ""
         if issubclass(T, GameIndex):
             unique_key += str(row_data.game_index) + ":"
@@ -190,14 +207,12 @@ def process_nonapi_csv(T: Type[CSVResource]):
     for idx, unique_key in idx_to_keys.items():
         existing_entry = existing_entry_map.pop(unique_key, None)
         if existing_entry:
-            """ if existing_entry.compare(df.loc[idx]):
-                updated_entries.append(existing_entry) """
             update_entries_map[existing_entry] = df.loc[idx]
         else:
             logger.debug("Process %s: Parsing new entry: %s", type_name, unique_key)
             new_idxs.append(idx)
             #logger.error("Found new idx: %s unique_key: %s", idx, unique_key)
-            #raise
+            #raise """
 
     with Session() as session:
         for existing_object, object_data in update_entries_map.items():

@@ -216,7 +216,7 @@ class LanguageName(TextEntry):
         super().__init__(data)
         self.text_entry = data[self.text_entry_name]
 
-        ins = inspect(self)
+        """ ins = inspect(self)
         object_class = ins.mapper.relationships.object_ref.mapper.class_
         language_class = ins.mapper.relationships.language.mapper.class_
         object_ref, _ = object_class.get_from_cache(data.language_id)
@@ -224,7 +224,7 @@ class LanguageName(TextEntry):
         self.object_ref = object_ref
         self.object_key = object_ref.id
         self.language = lang_ref
-        self.language_key = lang_ref.id
+        self.language_key = lang_ref.id """
 
     def get_unique_key(self):
         text_key = super().get_unique_key()

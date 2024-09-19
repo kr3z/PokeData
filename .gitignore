@@ -124,5 +124,7 @@ dmypy.json
 .pyre/
 
 config.properties
-test.py
+test*
+*.prof
 pokeapi/
+pvpoke/

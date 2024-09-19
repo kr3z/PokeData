@@ -320,7 +320,7 @@ class ItemGameIndex(GenerationGameIndex):
     __mapper_args__ = {"polymorphic_identity": "Item"}
     relationship_attr_map = dict(GenerationGameIndex.relationship_attr_map)
     relationship_attr_map.update({"item_id": ManyToOneAttrs("object_ref","object_key")})
-    csv_data: CSVData = CSVData(**{"primary_csv": "item_game_indices.csv", "relationships": relationship_attr_map})
+    csv_data: CSVData = CSVData(**{"primary_csv": "item_game_indices.csv", "relationships": relationship_attr_map, "append_unique_attrs":("game_index",)})
 
     def __init__(self, data):
         super().__init__(data)
@@ -337,7 +337,7 @@ class LocationGameIndex(GenerationGameIndex):
     __mapper_args__ = {"polymorphic_identity": "Location"}
     relationship_attr_map = dict(GenerationGameIndex.relationship_attr_map)
     relationship_attr_map.update({"location_id": ManyToOneAttrs("object_ref","object_key")})
-    csv_data: CSVData = CSVData(**{"primary_csv": "location_game_indices.csv", "relationships": relationship_attr_map})
+    csv_data: CSVData = CSVData(**{"primary_csv": "location_game_indices.csv", "relationships": relationship_attr_map, "append_unique_attrs":("game_index",)})
 
     def __init__(self, data):
         super().__init__(data)
@@ -354,7 +354,7 @@ class PokemonGameIndex(VersionGameIndex):
     __mapper_args__ = {"polymorphic_identity": "Pokemon"}
     relationship_attr_map = dict(VersionGameIndex.relationship_attr_map)
     relationship_attr_map.update({"pokemon_id": ManyToOneAttrs("object_ref","object_key")})
-    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_game_indices.csv", "relationships": relationship_attr_map})
+    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_game_indices.csv", "relationships": relationship_attr_map, "append_unique_attrs":("game_index",)})
 
     def __init__(self, data):
         super().__init__(data)
@@ -371,7 +371,7 @@ class TypeGameIndex(GenerationGameIndex):
     __mapper_args__ = {"polymorphic_identity": "PokemonType"}
     relationship_attr_map = dict(GenerationGameIndex.relationship_attr_map)
     relationship_attr_map.update({"type_id": ManyToOneAttrs("object_ref","object_key")})
-    csv_data: CSVData = CSVData(**{"primary_csv": "type_game_indices.csv", "relationships": relationship_attr_map})
+    csv_data: CSVData = CSVData(**{"primary_csv": "type_game_indices.csv", "relationships": relationship_attr_map, "append_unique_attrs":("game_index",)})
     
     def __init__(self, data):
         super().__init__(data)
@@ -388,7 +388,7 @@ class FormGameIndex(GenerationGameIndex):
     __mapper_args__ = {"polymorphic_identity": "PokemonForm"}
     relationship_attr_map = dict(GenerationGameIndex.relationship_attr_map)
     relationship_attr_map.update({"pokemon_form_id": ManyToOneAttrs("object_ref","object_key")})
-    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_form_generations.csv", "relationships": relationship_attr_map})
+    csv_data: CSVData = CSVData(**{"primary_csv": "pokemon_form_generations.csv", "relationships": relationship_attr_map, "append_unique_attrs":("game_index",)})
     
     def __init__(self, data):
         super().__init__(data)
